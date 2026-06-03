@@ -30,6 +30,7 @@
 
 #include "RunAction.hh"
 
+#include "G4AnalysisManager.hh"
 #include "G4Event.hh"
 #include "G4SystemOfUnits.hh"
 
@@ -55,8 +56,15 @@ void EventAction::EndOfEventAction(const G4Event*)
   // aggregated config readout is written once per run in RunAction.
   fRunAction->AddPixelVector(fEdep);
 
+  // Fill the per-crystal energy spectrum: each crystal's deposited energy this
+  // event is one entry in its histogram (counts vs keV). Only non-zero deposits
+  // contribute a count (mirrors a real detector trigger).
+  auto analysisManager = G4AnalysisManager::Instance();
   G4double total = 0.;
-  for (G4int i = 0; i < kNumPixels; ++i) total += fEdep[i];
+  for (G4int i = 0; i < kNumPixels; ++i) {
+    if (fEdep[i] > 0.) analysisManager->FillH1(i, fEdep[i] / keV);
+    total += fEdep[i];
+  }
   fRunAction->AddEdep(total);
 }
 

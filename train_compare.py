@@ -194,7 +194,10 @@ def main():
         args = ["build/ds_square_nt_pixels_t0.csv", "build/ds_S_nt_pixels_t0.csv"]
     results = {}
     for path in args:
-        label = os.path.basename(path).replace("ds_", "").replace("_nt_pixels_t0.csv", "")
+        label = (os.path.basename(path)
+                 .replace("ds_", "")
+                 .replace("_nt_pixels_t0.csv", "")
+                 .replace("_nt_pixels.csv", ""))
         results[label] = run_one(path, label)
 
     print("\n================ RANKING (lower = better) ================")

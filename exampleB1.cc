@@ -57,9 +57,11 @@ int main(int argc, char** argv)
   G4int precision = 4;
   G4SteppingVerbose::UseBestUnit(precision);
 
-  // Construct the default run manager
-  //
-  auto runManager = G4RunManagerFactory::CreateRunManager(G4RunManagerType::Default);
+  // Construct the run manager in SERIAL (single-thread) mode.
+  // CSV output cannot merge ntuples or histograms across worker threads, so
+  // multi-threaded runs would scatter/lose data. Serial keeps all output in a
+  // single set of files. Runs are fast enough that MT is not needed.
+  auto runManager = G4RunManagerFactory::CreateRunManager(G4RunManagerType::Serial);
 
   // Set mandatory initialization classes
   //

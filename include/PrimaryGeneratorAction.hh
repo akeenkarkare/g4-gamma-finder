@@ -63,18 +63,22 @@ class PrimaryGeneratorAction : public G4VUserPrimaryGeneratorAction
     void SetSourceAngle(G4double a) { fAngle = a; }
     void SetSourceDistance(G4double d) { fDistance = d; }
     void RandomizeSource();
+    void SetSourceType(G4String t) { fSourceType = t; }   // "mono" | "euba"
     G4double GetSourceAngle() const { return fAngle; }
     G4double GetSourceDistance() const { return fDistance; }
 
   private:
     void DefineCommands();
+    G4double SampleEnergy();           // gamma energy per the source type
+    void GenerateInternalDecay(G4Event*);  // 138La decay inside a crystal
 
     G4ParticleGun* fParticleGun = nullptr;  // pointer a to G4 gun class
     G4Box* fEnvelopeBox = nullptr;
     G4GenericMessenger* fMessenger = nullptr;
 
-    G4double fAngle = 0.;     // set in constructor (radians)
-    G4double fDistance = 0.;  // set in constructor (Geant4 length units)
+    G4double fAngle = 0.;        // set in constructor (radians)
+    G4double fDistance = 0.;     // set in constructor (Geant4 length units)
+    G4String fSourceType = "mono";  // "mono" (fixed energy) | "euba" (Eu-152+Ba-133)
 };
 
 }  // namespace B1

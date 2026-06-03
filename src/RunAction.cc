@@ -42,6 +42,8 @@
 #include "G4SystemOfUnits.hh"
 #include "G4UnitsTable.hh"
 
+#include <string>
+
 namespace B1
 {
 
@@ -74,6 +76,7 @@ RunAction::RunAction()
   analysisManager->SetDefaultFileType("csv");
   analysisManager->SetNtupleMerging(true);  // merge per-thread output into one file
   analysisManager->SetVerboseLevel(1);
+  analysisManager->SetH1Activation(true);   // enable histogram filling
 
   analysisManager->CreateNtuple("pixels", "Aggregated per-config readout");
   analysisManager->CreateNtupleDColumn("e0_keV");    // column 0
@@ -84,6 +87,16 @@ RunAction::RunAction()
   analysisManager->CreateNtupleDColumn("dist_cm");   // column 5
   analysisManager->CreateNtupleIColumn("nEvents");   // column 6
   analysisManager->FinishNtuple();
+
+  // --- Per-crystal energy spectra (histograms) ---
+  // One H1 per crystal: counts vs deposited energy. Range 0-1600 keV with
+  // 1600 bins (1 keV/bin) captures the low-energy source photopeaks AND the
+  // high-energy 138La intrinsic lines (789, 1436 keV). H1 ids 0..3 = pixel 0..3.
+  for (G4int i = 0; i < kNumPixels; ++i) {
+    analysisManager->CreateH1("spectrum" + std::to_string(i),
+                              "Energy spectrum pixel " + std::to_string(i) + " (keV)",
+                              1600, 0., 1600.);
+  }
 
   DefineCommands();
 }
