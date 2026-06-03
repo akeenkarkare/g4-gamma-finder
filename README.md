@@ -1,4 +1,4 @@
-\page ExampleB1 Example B1
+Example B1
 
  This example demonstrates a very simple application where an energy
  deposit is accounted in user actions and their associated objects

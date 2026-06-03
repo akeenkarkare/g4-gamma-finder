@@ -1,0 +1,13 @@
+# S-shape, lead padding = 5.0 mm. Output: dsS_p50_nt_pixels_t0.csv
+/det/shape S
+/det/padding 5.0 mm
+/run/numberOfThreads 1
+/run/initialize
+/run/verbose 0
+/event/verbose 0
+/tracking/verbose 0
+/gun/particle gamma
+/gun/energy 0.5 MeV
+/det/openFile dsS_p50
+/control/loop gen_config_step.mac i 1 1000 1
+/det/writeFile
