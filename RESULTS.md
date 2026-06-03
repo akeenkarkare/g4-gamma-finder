@@ -38,6 +38,29 @@ Lower angular error = better directional resolution.
 
 **Design recommendation: build the S-shape arrangement.**
 
+## Padding sweep (S-shape, lead thickness)
+
+Holding shape = S, sweeping the lead inter-pixel padding thickness
+(1000 configs each, same evaluation protocol).
+
+| Padding (mm) | Angular error (deg) |
+|--------------|---------------------|
+| **1.0**      | **7.38 ± 1.41**     |
+| 0.5          | 8.03 ± 1.66         |
+| 2.0          | 8.05 ± 0.60         |
+| 3.0          | 10.33 ± 1.86        |
+| 5.0          | 10.95 ± 1.29        |
+
+### Interpretation
+- **1 mm padding (the paper's value) is optimal.** 1.0 and 2.0 mm are
+  statistically tied (overlapping bands); both clearly beat thicker lead.
+- Beyond ~2 mm, resolution degrades: thicker lead absorbs too many gammas
+  (less signal) without adding useful inter-pixel contrast.
+- No tuning gain available here -- the original configuration was already
+  well-chosen.
+
+**Final optimized design: S-shape, 1 mm lead padding -> ~7.4 deg accuracy.**
+
 ## Reproduce
 
 ```bash
