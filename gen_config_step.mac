@@ -1,0 +1,6 @@
+# Inner loop body: one training configuration.
+# Pick a fresh random (distance, angle), then fire a batch of gammas.
+# Every event row is labelled with that config's angle/distance, so a unique
+# (angle,distance) pair identifies all events belonging to this config.
+/det/randomizeSource
+/run/beamOn 5000

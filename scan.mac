@@ -1,0 +1,33 @@
+# =====================================================================
+# Dataset generator: scan the gamma source angle around the detector and
+# record per-pixel energy deposits to a single labeled CSV.
+#
+# Output: dataset_nt_pixels_t0.csv
+#   columns: eventID, e0_keV, e1_keV, e2_keV, e3_keV, angle_deg, dist_cm
+#
+# Run with:  ./exampleB1 scan.mac
+# =====================================================================
+
+# Single thread so all events land in ONE clean CSV (CSV can't merge threads).
+/run/numberOfThreads 1
+/run/initialize
+
+/run/verbose 0
+/event/verbose 0
+/tracking/verbose 0
+
+/gun/particle gamma
+/gun/energy 0.5 MeV
+
+# Fixed source distance for this scan (change as desired).
+/det/sourceDistance 50 cm
+
+# Open ONE dataset file and keep it open across every beamOn below.
+/det/openFile dataset
+
+# Sweep angle from 0 to 350 degrees in 10-degree steps (36 angles).
+# /control/loop <macro> <var> <start> <stop> <step>
+/control/loop scan_step.mac ang 0 350 10
+
+# Write and close the dataset.
+/det/writeFile

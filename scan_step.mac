@@ -1,0 +1,5 @@
+# Inner loop body for the angle scan. Called by /control/loop with {ang}
+# substituted for each angle value. Sets the source angle and fires a batch
+# of gammas; every event row records its own angle/distance label.
+/det/sourceAngle {ang} deg
+/run/beamOn 5000
