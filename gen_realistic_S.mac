@@ -1,0 +1,20 @@
+# Realistic S-shape training dataset:
+#   - external Eu-152 + Ba-133 source at random (angle, distance)
+#   - 20% of events are 138La internal background (interleaved)
+#   - per-pixel readout uses ONLY counts in the [40, 450] keV ROI
+#     (the photopeak energy cut you would apply to real measured data)
+# Output: dsRealS_nt_pixels.csv  (one row per config)
+/det/shape S
+/det/padding 1.0 mm
+/run/initialize
+/run/verbose 0
+/event/verbose 0
+/tracking/verbose 0
+/gun/particle gamma
+/det/sourceType euba
+/det/bgFraction 0.2
+/det/roiLow 40 keV
+/det/roiHigh 450 keV
+/det/openFile dsRealS
+/control/loop gen_config_step.mac i 1 1000 1
+/det/writeFile

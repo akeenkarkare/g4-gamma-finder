@@ -61,6 +61,38 @@ Holding shape = S, sweeping the lead inter-pixel padding thickness
 
 **Final optimized design: S-shape, 1 mm lead padding -> ~7.4 deg accuracy.**
 
+## Realistic field performance (S-shape)
+
+The numbers above use an idealized single-energy (0.5 MeV) source with no
+background. To estimate real field performance we retrained on a dataset that
+adds the actual measurement conditions:
+- external **Eu-152 + Ba-133** source (discrete lines, weighted by intensity),
+- **20% of events as 138La internal background** (the intrinsic LaBr3 activity),
+- per-pixel readout taken **only within a [40, 450] keV photopeak ROI** (the
+  energy cut you would apply to real data).
+
+| Conditions | Angular error (deg) |
+|------------|---------------------|
+| Idealized (0.5 MeV mono, no background, full energy) | 7.38 ± 1.41 |
+| **Realistic (Eu/Ba + 20% 138La background + ROI)**   | **8.71 ± 1.09** |
+
+### Interpretation
+- Realistic conditions cost only **~1.3 deg** (~18% relative); the error bands
+  overlap, so the degradation is mild.
+- It holds up because (1) the ROI keeps the low-energy directional source and
+  rejects most 138La, and (2) the 138La that leaks through is symmetric across
+  pixels, adding noise but not directional bias.
+- **Expect ~8-9 deg directional accuracy in the field** with the S-shape, the
+  Eu/Ba source, and a standard photopeak ROI cut. LaBr3 self-activity does not
+  meaningfully degrade this provided the energy window is applied.
+
+### Background discrimination (energy + symmetry)
+`analyze_discrimination.py` quantifies the two separation levers on a mixed
+measurement: the source puts ~79% of its counts in the low-energy ROI and is
+strongly directional (one pixel ~0.94 of the in-ROI signal), while 138La is
+~70% outside the ROI and uniform across pixels (~0.25 each) -- so it is
+separable from the source by BOTH energy and symmetry.
+
 ## Reproduce
 
 ```bash
@@ -75,4 +107,11 @@ python3 train_compare.py \
   build/ds_square_nt_pixels_t0.csv build/ds_S_nt_pixels_t0.csv \
   build/ds_J_nt_pixels_t0.csv build/ds_T_nt_pixels_t0.csv \
   build/ds_L_nt_pixels_t0.csv
+
+# 3. Realistic S-shape run (Eu/Ba source + 138La background + ROI)
+cd build && ./exampleB1 gen_realistic_S.mac && cd ..
+python3 train_compare.py build/dsRealS_nt_pixels.csv
+
+# 4. Background-discrimination demo (run the two macros first to make spectra)
+python3 analyze_discrimination.py build/mix_src build/mix_int
 ```

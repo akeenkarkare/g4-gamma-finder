@@ -63,7 +63,8 @@ class PrimaryGeneratorAction : public G4VUserPrimaryGeneratorAction
     void SetSourceAngle(G4double a) { fAngle = a; }
     void SetSourceDistance(G4double d) { fDistance = d; }
     void RandomizeSource();
-    void SetSourceType(G4String t) { fSourceType = t; }   // "mono" | "euba"
+    void SetSourceType(G4String t) { fSourceType = t; }   // "mono" | "euba" | "internal"
+    void SetBgFraction(G4double f) { fBgFraction = f; }   // fraction of events that are 138La
     G4double GetSourceAngle() const { return fAngle; }
     G4double GetSourceDistance() const { return fDistance; }
 
@@ -78,7 +79,8 @@ class PrimaryGeneratorAction : public G4VUserPrimaryGeneratorAction
 
     G4double fAngle = 0.;        // set in constructor (radians)
     G4double fDistance = 0.;     // set in constructor (Geant4 length units)
-    G4String fSourceType = "mono";  // "mono" (fixed energy) | "euba" (Eu-152+Ba-133)
+    G4String fSourceType = "mono";  // "mono" (fixed energy) | "euba" (Eu-152+Ba-133) | "internal"
+    G4double fBgFraction = 0.;       // fraction of events drawn as 138La internal decays
 };
 
 }  // namespace B1

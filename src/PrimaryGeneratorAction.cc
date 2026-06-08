@@ -109,6 +109,13 @@ void PrimaryGeneratorAction::DefineCommands()
     "'euba' (Eu-152 + Ba-133 mixed calibration source, discrete lines).");
   typeCmd.SetParameterName("type", true);
   typeCmd.SetDefaultValue("mono");
+
+  auto& bgCmd = fMessenger->DeclareMethod(
+    "bgFraction", &PrimaryGeneratorAction::SetBgFraction,
+    "Fraction (0..1) of events drawn as 138La internal background, "
+    "interleaved with the external source to make a realistic mixed config.");
+  bgCmd.SetParameterName("frac", true);
+  bgCmd.SetDefaultValue("0.");
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -135,7 +142,10 @@ void PrimaryGeneratorAction::GeneratePrimaries(G4Event* event)
   // isotropic and originates within the crystals, so it adds a near-uniform
   // baseline across pixels -- distinguishable from a directional source both
   // by energy (789/1436 keV vs the low-energy Eu/Ba lines) and by symmetry.
-  if (fSourceType == "internal") {
+  // Pure internal mode, OR a mixed config where a fraction fBgFraction of the
+  // events are interleaved 138La internal decays alongside the external source.
+  if (fSourceType == "internal" ||
+      (fBgFraction > 0. && G4UniformRand() < fBgFraction)) {
     GenerateInternalDecay(event);
     return;
   }

@@ -33,6 +33,7 @@
 #include "globals.hh"
 
 class G4Event;
+class G4GenericMessenger;
 
 namespace B1
 {
@@ -47,7 +48,7 @@ class EventAction : public G4UserEventAction
     static constexpr G4int kNumPixels = 4;
 
     EventAction(RunAction* runAction);
-    ~EventAction() override = default;
+    ~EventAction() override;
 
     void BeginOfEventAction(const G4Event* event) override;
     void EndOfEventAction(const G4Event* event) override;
@@ -58,9 +59,23 @@ class EventAction : public G4UserEventAction
       if (pixel >= 0 && pixel < kNumPixels) fEdep[pixel] += edep;
     }
 
+    // Energy region-of-interest. When fRoiEnabled, a pixel's deposit
+    // contributes to the aggregated readout only if it falls in [lo, hi] --
+    // mimicking the photopeak energy cut applied to real measured data.
+    // The messenger passes values in Geant4 energy units; we store keV.
+    void SetRoiLow(G4double lo);
+    void SetRoiHigh(G4double hi);
+
   private:
+    void DefineCommands();
+
     RunAction* fRunAction = nullptr;
     G4double fEdep[kNumPixels] = {0., 0., 0., 0.};
+
+    G4GenericMessenger* fMessenger = nullptr;
+    G4bool fRoiEnabled = false;
+    G4double fRoiLow = 0.;     // keV
+    G4double fRoiHigh = 1e9;   // keV
 };
 
 }  // namespace B1
