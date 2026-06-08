@@ -42,24 +42,44 @@ SEEDS = [0, 1, 2, 3, 4]   # average over several seeds/splits for a stable answe
 # Data
 # ---------------------------------------------------------------------------
 def read_csv(path):
-    """Read the aggregated Geant4 ntuple CSV -> (X[n,4], angles_deg[n])."""
+    """Read the aggregated Geant4 ntuple CSV -> (X[n,k], angles_deg[n]).
+
+    Handles both the old 4-column format (e0..e3, angle, dist, n) and the new
+    6-column format (e0..e5, angle, dist, n). The energy columns and the
+    angle column are located by the '#column ... <name>' header lines. Crystal
+    columns that are all-zero across the dataset (unused by the shape) are
+    dropped, so X has exactly the active crystal count k."""
+    cols = []                       # ordered column names from the header
     rows = []
     with open(path) as f:
         for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
+            line = line.rstrip("\n")
+            if line.startswith("#column"):
+                cols.append(line.split()[-1])   # last token is the name
                 continue
-            p = line.split(",")
-            if len(p) < 6:
+            if not line or line.startswith("#") or line.startswith("entries"):
                 continue
+            parts = line.split(",")
             try:
-                e = [float(p[0]), float(p[1]), float(p[2]), float(p[3])]
-                ang = float(p[4])
+                rows.append([float(x) for x in parts])
             except ValueError:
                 continue
-            rows.append(e + [ang])
     arr = np.array(rows, dtype=np.float64)
-    return arr[:, :4], arr[:, 4]
+
+    # Locate columns by name (fallback to positional if header missing).
+    if cols and "angle_deg" in cols:
+        e_idx = [i for i, c in enumerate(cols) if c.startswith("e") and c.endswith("_keV")]
+        a_idx = cols.index("angle_deg")
+    else:
+        e_idx = list(range(arr.shape[1] - 3))   # assume last 3 are angle,dist,n
+        a_idx = arr.shape[1] - 3
+
+    X = arr[:, e_idx]
+    ang = arr[:, a_idx]
+    # Drop crystal columns that are entirely zero (unused by this shape).
+    active = X.sum(axis=0) > 0
+    X = X[:, active]
+    return X, ang
 
 
 def angular_target(angle_deg):
@@ -87,30 +107,27 @@ def normalize_inputs(X):
 # ---------------------------------------------------------------------------
 # Cyclic Wasserstein / EMD on a ring (adapted from the paper's emd_ring_torch)
 # ---------------------------------------------------------------------------
-def ecdf(p):
-    n = p.shape[1]
-    tri = torch.tril(torch.ones(n, n, dtype=p.dtype, device=p.device)).t()
-    return torch.matmul(p, tri)
-
-
-def shift(p, d):
-    if d == 0:
-        return p
-    return torch.cat([p[:, d:], p[:, :d]], dim=1)
-
-
 def emd_loss_ring(p, p_hat, r=2, eps=1e-8):
     """Cyclic r-Wasserstein distance between two batches of ring PMFs.
-    r=2 for training (smooth), r=1 for evaluation (= angular error in sectors)."""
+    r=2 for training (smooth), r=1 for evaluation (= angular error in sectors).
+
+    Vectorized form of the cut-point method: for the per-element difference
+    d = p - p_hat, the cost for cut point k is the r-norm of the cumulative sum
+    of d started at index k. Using c = cumsum(d) and total T = c[-1], the
+    cut-at-k cumulative profile equals (c rolled by k) - (T rolled), which for
+    each shift is c - c[k-1]. So the cost matrix over all 64 cut points is built
+    with a single broadcast instead of a 64-iteration Python loop."""
     p = p / (p.sum(dim=1, keepdim=True) + eps)
     p_hat = p_hat / (p_hat.sum(dim=1, keepdim=True) + eps)
-    n = p.shape[1]
-    diffs = []
-    for i in range(n):
-        d = ecdf(shift(p, i)) - ecdf(shift(p_hat, i))
-        diffs.append((d.abs() ** r).sum(dim=1))
-    emd = torch.stack(diffs, dim=0).min(dim=0)[0]   # min over cyclic cut points
-    emd = emd ** (1.0 / r)
+    d = p - p_hat                       # [B, n]
+    c = torch.cumsum(d, dim=1)          # [B, n]; c[:, n-1] ~ 0 (equal mass)
+    # For cut point k, the shifted CDF difference is c - c[:, k-1] (with k=0 -> 0).
+    # cprev[:, k] = c[:, k-1], cprev[:, 0] = 0.
+    cprev = torch.cat([torch.zeros_like(c[:, :1]), c[:, :-1]], dim=1)  # [B, n]
+    # diff_kj = c[:, j] - cprev[:, k]  -> [B, n(cuts k), n(positions j)]
+    diff = c.unsqueeze(1) - cprev.unsqueeze(2)        # [B, k, j]
+    cost = (diff.abs() ** r).sum(dim=2)               # [B, k]  cost per cut point
+    emd = cost.min(dim=1)[0] ** (1.0 / r)             # min over cut points
     return emd.mean()
 
 
@@ -118,10 +135,10 @@ def emd_loss_ring(p, p_hat, r=2, eps=1e-8):
 # Model: compact MLP  4 -> 64 softmax
 # ---------------------------------------------------------------------------
 class DirNet(nn.Module):
-    def __init__(self, seg=SEG):
+    def __init__(self, n_in=4, seg=SEG):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(4, 128), nn.ELU(),
+            nn.Linear(n_in, 128), nn.ELU(),
             nn.Linear(128, 256), nn.ELU(),
             nn.Linear(256, 256), nn.ELU(),
             nn.Linear(256, seg),
@@ -149,7 +166,7 @@ def train_eval_seed(Xn, Y, seed):
     Xtr = torch.tensor(Xn[tr], dtype=dt); Ytr = torch.tensor(Y[tr], dtype=dt)
     Xte = torch.tensor(Xn[te], dtype=dt); Yte = torch.tensor(Y[te], dtype=dt)
 
-    net = DirNet().double()
+    net = DirNet(n_in=Xn.shape[1]).double()
     opt = torch.optim.Adam(net.parameters(), lr=1e-3)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=EPOCHS)
 
@@ -175,13 +192,14 @@ def run_one(path, label):
     X, ang = read_csv(path)
     Xn = normalize_inputs(X)
     Y = angular_target(ang)
-    print(f"\n[{label}] {len(X)} configs, {len(SEEDS)} seeds...")
+    print(f"\n[{label}] {len(X)} configs, {X.shape[1]} crystals, {len(SEEDS)} seeds...",
+          flush=True)
     per_seed = []
     for s in SEEDS:
         emd = train_eval_seed(Xn, Y, s)
         deg = emd * SECTOR_DEG
         per_seed.append(deg)
-        print(f"  seed {s}: best test error = {deg:.2f} deg")
+        print(f"  seed {s}: best test error = {deg:.2f} deg", flush=True)
     arr = np.array(per_seed)
     print(f"  -> {label}: mean = {arr.mean():.2f} deg  (std {arr.std():.2f}, "
           f"min {arr.min():.2f}, max {arr.max():.2f})")

@@ -59,7 +59,47 @@ Holding shape = S, sweeping the lead inter-pixel padding thickness
 - No tuning gain available here -- the original configuration was already
   well-chosen.
 
-**Final optimized design: S-shape, 1 mm lead padding -> ~7.4 deg accuracy.**
+**Best 4-crystal design: S-shape, 1 mm lead padding -> ~7-9 deg accuracy.**
+(Superseded overall by the 5-crystal P-pentomino -- see the crystal-count
+section below.)
+
+## Number of crystals -- fair shape search (4 vs 5 vs 6)
+
+A first attempt compared the optimized 4-shape (S) against ARBITRARY 5- and
+6-shapes and wrongly concluded "more is not better". The fair test enumerates
+candidate shapes for EVERY count and lets the data pick the best of each:
+- 4 crystals: square, S, J, T, L (S won earlier at 9.0 deg)
+- 5 crystals: ALL 12 free pentominoes (F,I,L,N,P,T,U,V,W,X,Y,Z)
+- 6 crystals: 8 hexominoes (asymmetric-weighted + a 2x3 symmetric baseline)
+Idealized conditions, 1000 configs each, 5 seeds, same protocol.
+
+### Best shape per crystal count
+| Crystals | Best shape        | Angular error (deg) |
+|----------|-------------------|---------------------|
+| **5**    | **P-pentomino**   | **4.69 ± 0.59**     |
+| 6        | extended-N hexomino | 6.83 ± 0.53       |
+| 4        | S-tetromino       | 9.00 ± 1.45         |
+
+### Interpretation
+- **The earlier conclusion was wrong.** With a fair shape search, the best
+  5-crystal (P-pentomino, 4.7 deg) is ~2x better than the best 4-crystal (S,
+  9.0 deg), and the best 6-crystal also beats the best 4. The original "more is
+  not better" came from comparing optimized-4 vs arbitrary-5/6.
+- **Shape dominates count.** Within 5 crystals the error ranges 4.7 deg (P) to
+  47 deg (I, a straight line that is nearly 1-D and cannot resolve front/back) --
+  a 10x spread. You cannot judge a crystal count without first finding its best
+  shape.
+- **Knee is at 5.** best-4 (9.0) -> best-5 (4.7) is a large real gain, but
+  best-5 -> best-6 REGRESSES (4.7 -> 6.8): the 6th crystal enlarges the footprint
+  and dilutes per-pixel contrast more than it adds information. The P-pentomino
+  is the sweet spot.
+- The P-pentomino is a 2x2 block plus one extra crystal on the side -- compact
+  and asymmetric.
+- Caveat: all 12 pentominoes were tested (exhaustive for 5), but only 8 of the
+  35 hexominoes. A better hexomino may exist, but every tested hexomino lost to
+  the P-pentomino.
+
+**Revised optimal design: 5-crystal P-pentomino, 1 mm lead padding -> ~4.7 deg.**
 
 ## Realistic field performance (S-shape)
 

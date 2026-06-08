@@ -48,6 +48,13 @@ namespace B1
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
+// Active crystal count, set when the shape is built. Default 4 until Construct().
+G4int DetectorConstruction::fNumPixels = 4;
+
+G4int DetectorConstruction::GetNumPixels() { return fNumPixels; }
+
+//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
+
 DetectorConstruction::DetectorConstruction()
 {
   DefineCommands();
@@ -78,7 +85,7 @@ void DetectorConstruction::DefineCommands()
 
   auto& shapeCmd = fMessenger->DeclareMethod(
     "shape", &DetectorConstruction::SetShape,
-    "Crystal arrangement: square | S | J | T | L. "
+    "Crystal arrangement: square|S|J|T|L (4) | P|F|W (5) | grid6|A6 (6). "
     "Run /run/reinitializeGeometry afterwards.");
   shapeCmd.SetParameterName("shape", true);
   shapeCmd.SetDefaultValue("square");
@@ -223,6 +230,7 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
   // (rows increase upward in y; cols increase to the right in x)
   struct Cell { int col; int row; };
   std::vector<Cell> cells;
+  // --- 4-crystal (tetromino) shapes ---
   if (fShape == "S") {
     cells = {{1, 1}, {2, 1}, {0, 0}, {1, 0}};        // S / Z tetromino
   } else if (fShape == "J") {
@@ -231,10 +239,58 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
     cells = {{1, 1}, {0, 0}, {1, 0}, {2, 0}};        // T tetromino
   } else if (fShape == "L") {
     cells = {{0, 2}, {0, 1}, {0, 0}, {1, 0}};        // L tetromino
+
+  // --- 5-crystal: all 12 free pentominoes ---
+  } else if (fShape == "pF") {
+    cells = {{1, 2}, {2, 2}, {0, 1}, {1, 1}, {1, 0}};
+  } else if (fShape == "pI") {
+    cells = {{0, 0}, {0, 1}, {0, 2}, {0, 3}, {0, 4}};
+  } else if (fShape == "pL") {
+    cells = {{0, 0}, {0, 1}, {0, 2}, {0, 3}, {1, 0}};
+  } else if (fShape == "pN") {
+    cells = {{0, 0}, {0, 1}, {1, 1}, {1, 2}, {1, 3}};
+  } else if (fShape == "pP") {
+    cells = {{0, 0}, {0, 1}, {1, 0}, {1, 1}, {1, 2}};
+  } else if (fShape == "pT") {
+    cells = {{0, 2}, {1, 2}, {2, 2}, {1, 1}, {1, 0}};
+  } else if (fShape == "pU") {
+    cells = {{0, 0}, {0, 1}, {1, 0}, {2, 0}, {2, 1}};
+  } else if (fShape == "pV") {
+    cells = {{0, 0}, {0, 1}, {0, 2}, {1, 0}, {2, 0}};
+  } else if (fShape == "pW") {
+    cells = {{0, 2}, {0, 1}, {1, 1}, {1, 0}, {2, 0}};
+  } else if (fShape == "pX") {
+    cells = {{1, 2}, {0, 1}, {1, 1}, {2, 1}, {1, 0}};
+  } else if (fShape == "pY") {
+    cells = {{1, 0}, {1, 1}, {1, 2}, {1, 3}, {0, 1}};
+  } else if (fShape == "pZ") {
+    cells = {{0, 2}, {1, 2}, {1, 1}, {1, 0}, {2, 0}};
+
+  // --- 6-crystal hexominoes (asymmetric-weighted + 1 symmetric baseline) ---
+  } else if (fShape == "hGrid") {       // 2x3 rectangle (symmetric baseline)
+    cells = {{0, 1}, {1, 1}, {2, 1}, {0, 0}, {1, 0}, {2, 0}};
+  } else if (fShape == "hA") {          // staggered, no symmetry axis
+    cells = {{1, 2}, {0, 1}, {1, 1}, {2, 1}, {2, 0}, {0, 0}};
+  } else if (fShape == "hL") {          // long L (asymmetric)
+    cells = {{0, 0}, {0, 1}, {0, 2}, {0, 3}, {0, 4}, {1, 0}};
+  } else if (fShape == "hY") {          // Y-hexomino (asymmetric)
+    cells = {{1, 0}, {1, 1}, {1, 2}, {1, 3}, {1, 4}, {0, 2}};
+  } else if (fShape == "hN") {          // extended N / S (asymmetric)
+    cells = {{0, 0}, {0, 1}, {0, 2}, {1, 2}, {1, 3}, {1, 4}};
+  } else if (fShape == "hZ") {          // extended Z (point asymmetric)
+    cells = {{0, 0}, {1, 0}, {1, 1}, {1, 2}, {1, 3}, {2, 3}};
+  } else if (fShape == "hW") {          // staircase (asymmetric)
+    cells = {{0, 0}, {1, 0}, {1, 1}, {2, 1}, {2, 2}, {3, 2}};
+  } else if (fShape == "hF") {          // F-like extension (asymmetric)
+    cells = {{1, 3}, {2, 3}, {1, 2}, {0, 1}, {1, 1}, {1, 0}};
+
   } else {
     fShape = "square";
     cells = {{0, 1}, {1, 1}, {0, 0}, {1, 0}};        // 2x2 square
   }
+
+  // Record the active crystal count for the rest of the framework.
+  fNumPixels = static_cast<G4int>(cells.size());
 
   // Compute centroid to center the array on the origin.
   G4double cx = 0., cy = 0.;
@@ -247,7 +303,7 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
 
   // --- Place casings + crystals ---------------------------------------------
   std::vector<G4ThreeVector> pos;
-  for (G4int i = 0; i < kNumPixels; ++i) {
+  for (G4int i = 0; i < fNumPixels; ++i) {
     G4ThreeVector p = cellPos(cells[i]);
     pos.push_back(p);
 
@@ -266,8 +322,8 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
   // slab of full thickness `fPadding` into the gap between their casings. This
   // generalizes the "+" cross to any shape.
   G4int padCount = 0;
-  for (G4int i = 0; i < kNumPixels; ++i) {
-    for (G4int j = i + 1; j < kNumPixels; ++j) {
+  for (G4int i = 0; i < fNumPixels; ++i) {
+    for (G4int j = i + 1; j < fNumPixels; ++j) {
       int dcol = cells[i].col - cells[j].col;
       int drow = cells[i].row - cells[j].row;
       bool neighbour = (std::abs(dcol) + std::abs(drow)) == 1;

@@ -45,7 +45,7 @@ class RunAction;
 class EventAction : public G4UserEventAction
 {
   public:
-    static constexpr G4int kNumPixels = 4;
+    static constexpr G4int kMaxPixels = 6;
 
     EventAction(RunAction* runAction);
     ~EventAction() override;
@@ -53,10 +53,10 @@ class EventAction : public G4UserEventAction
     void BeginOfEventAction(const G4Event* event) override;
     void EndOfEventAction(const G4Event* event) override;
 
-    // Add energy deposit to a specific pixel (0..3).
+    // Add energy deposit to a specific pixel (0..kMaxPixels-1).
     void AddEdep(G4int pixel, G4double edep)
     {
-      if (pixel >= 0 && pixel < kNumPixels) fEdep[pixel] += edep;
+      if (pixel >= 0 && pixel < kMaxPixels) fEdep[pixel] += edep;
     }
 
     // Energy region-of-interest. When fRoiEnabled, a pixel's deposit
@@ -70,7 +70,7 @@ class EventAction : public G4UserEventAction
     void DefineCommands();
 
     RunAction* fRunAction = nullptr;
-    G4double fEdep[kNumPixels] = {0., 0., 0., 0.};
+    G4double fEdep[kMaxPixels] = {0.};
 
     G4GenericMessenger* fMessenger = nullptr;
     G4bool fRoiEnabled = false;

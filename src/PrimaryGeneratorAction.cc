@@ -28,6 +28,8 @@
 
 #include "PrimaryGeneratorAction.hh"
 
+#include "DetectorConstruction.hh"
+
 #include "G4Box.hh"
 #include "G4GenericMessenger.hh"
 #include "G4LogicalVolume.hh"
@@ -186,7 +188,7 @@ void PrimaryGeneratorAction::GenerateInternalDecay(G4Event* event)
   auto pvStore = G4PhysicalVolumeStore::GetInstance();
   std::vector<G4ThreeVector> centers;
   G4double rad = 0., halfz = 0.;
-  for (G4int i = 0; i < 4; ++i) {
+  for (G4int i = 0; i < DetectorConstruction::GetNumPixels(); ++i) {
     G4String name = "Pixel" + std::to_string(i);
     G4VPhysicalVolume* pv = pvStore->GetVolume(name, false);
     if (!pv) continue;

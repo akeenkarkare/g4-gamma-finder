@@ -28,6 +28,7 @@
 
 #include "EventAction.hh"
 
+#include "DetectorConstruction.hh"
 #include "RunAction.hh"
 
 #include "G4AnalysisManager.hh"
@@ -78,7 +79,7 @@ void EventAction::DefineCommands()
 
 void EventAction::BeginOfEventAction(const G4Event*)
 {
-  for (G4int i = 0; i < kNumPixels; ++i) fEdep[i] = 0.;
+  for (G4int i = 0; i < kMaxPixels; ++i) fEdep[i] = 0.;
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -86,19 +87,20 @@ void EventAction::BeginOfEventAction(const G4Event*)
 void EventAction::EndOfEventAction(const G4Event*)
 {
   auto analysisManager = G4AnalysisManager::Instance();
+  const G4int n = DetectorConstruction::GetNumPixels();
 
   // Fill the FULL per-crystal energy spectrum (no ROI cut) so the histograms
   // always show the complete spectrum for inspection.
-  for (G4int i = 0; i < kNumPixels; ++i) {
+  for (G4int i = 0; i < n; ++i) {
     if (fEdep[i] > 0.) analysisManager->FillH1(i, fEdep[i] / keV);
   }
 
   // Build the aggregated readout vector. If an ROI is set, a pixel only
   // contributes when its deposit falls in the window -- this is the photopeak
   // energy cut, applied here exactly as it would be to real measured data.
-  G4double gated[kNumPixels];
+  G4double gated[kMaxPixels] = {0.};
   G4double total = 0.;
-  for (G4int i = 0; i < kNumPixels; ++i) {
+  for (G4int i = 0; i < n; ++i) {
     G4double e = fEdep[i] / keV;
     G4bool inRoi = !fRoiEnabled || (e >= fRoiLow && e <= fRoiHigh);
     gated[i] = (e > 0. && inRoi) ? fEdep[i] : 0.;

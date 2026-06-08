@@ -58,8 +58,10 @@ class DetectorConstruction : public G4VUserDetectorConstruction
 
     G4LogicalVolume* GetScoringVolume() const { return fScoringVolume; }
 
-    // Number of detector crystals.
-    static constexpr G4int kNumPixels = 4;
+    // Maximum supported crystals (sizes fixed arrays). The ACTIVE count for the
+    // current shape is fNumPixels (4, 5, or 6), available via GetNumPixels().
+    static constexpr G4int kMaxPixels = 6;
+    static G4int GetNumPixels();              // active count for the current shape
 
     // Configuration setters (used by the messenger).
     void SetShape(G4String shape);
@@ -71,11 +73,13 @@ class DetectorConstruction : public G4VUserDetectorConstruction
     void DefineCommands();
 
     G4LogicalVolume* fScoringVolume = nullptr;
-    G4LogicalVolume* fLogicPixel[kNumPixels] = {nullptr, nullptr, nullptr, nullptr};
+    G4LogicalVolume* fLogicPixel[kMaxPixels] = {nullptr};
     G4GenericMessenger* fMessenger = nullptr;
 
-    G4String fShape = "square";       // square | S | J | T | L
+    G4String fShape = "square";       // square|S|J|T|L (4) | P|F (5) | H|U (6)
     G4double fPadding = 1.0;          // lead padding FULL thickness in mm (default 1 mm)
+
+    static G4int fNumPixels;          // active crystal count for the built shape
 };
 
 }  // namespace B1

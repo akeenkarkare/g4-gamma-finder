@@ -78,21 +78,21 @@ RunAction::RunAction()
   analysisManager->SetVerboseLevel(1);
   analysisManager->SetH1Activation(true);   // enable histogram filling
 
+  // Always write kMaxPixels (6) energy columns e0..e5; shapes with fewer
+  // crystals leave the unused columns at 0. Columns: e0..e5, angle, dist, n.
   analysisManager->CreateNtuple("pixels", "Aggregated per-config readout");
-  analysisManager->CreateNtupleDColumn("e0_keV");    // column 0
-  analysisManager->CreateNtupleDColumn("e1_keV");    // column 1
-  analysisManager->CreateNtupleDColumn("e2_keV");    // column 2
-  analysisManager->CreateNtupleDColumn("e3_keV");    // column 3
-  analysisManager->CreateNtupleDColumn("angle_deg"); // column 4
-  analysisManager->CreateNtupleDColumn("dist_cm");   // column 5
-  analysisManager->CreateNtupleIColumn("nEvents");   // column 6
+  for (G4int i = 0; i < kMaxPixels; ++i)
+    analysisManager->CreateNtupleDColumn("e" + std::to_string(i) + "_keV");  // 0..5
+  analysisManager->CreateNtupleDColumn("angle_deg"); // column kMaxPixels
+  analysisManager->CreateNtupleDColumn("dist_cm");   // column kMaxPixels+1
+  analysisManager->CreateNtupleIColumn("nEvents");   // column kMaxPixels+2
   analysisManager->FinishNtuple();
 
   // --- Per-crystal energy spectra (histograms) ---
-  // One H1 per crystal: counts vs deposited energy. Range 0-1600 keV with
-  // 1600 bins (1 keV/bin) captures the low-energy source photopeaks AND the
-  // high-energy 138La intrinsic lines (789, 1436 keV). H1 ids 0..3 = pixel 0..3.
-  for (G4int i = 0; i < kNumPixels; ++i) {
+  // One H1 per crystal (up to kMaxPixels): counts vs deposited energy. Range
+  // 0-1600 keV captures the low-energy source photopeaks AND the high-energy
+  // 138La intrinsic lines (789, 1436 keV). Unused crystals stay empty.
+  for (G4int i = 0; i < kMaxPixels; ++i) {
     analysisManager->CreateH1("spectrum" + std::to_string(i),
                               "Energy spectrum pixel " + std::to_string(i) + " (keV)",
                               1600, 0., 1600.);
@@ -150,9 +150,9 @@ void RunAction::WriteDataFile()
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-void RunAction::AddPixelVector(const G4double e[kNumPixels])
+void RunAction::AddPixelVector(const G4double e[kMaxPixels])
 {
-  for (G4int i = 0; i < kNumPixels; ++i) fPixelSum[i] += e[i];
+  for (G4int i = 0; i < kMaxPixels; ++i) fPixelSum[i] += e[i];
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -167,7 +167,7 @@ void RunAction::BeginOfRunAction(const G4Run*)
   accumulableManager->Reset();
 
   // Reset this config's per-pixel totals.
-  for (G4int i = 0; i < kNumPixels; ++i) fPixelSum[i] = 0.;
+  for (G4int i = 0; i < kMaxPixels; ++i) fPixelSum[i] = 0.;
 
   // If the user did not explicitly open a dataset file (e.g. a simple
   // single-run macro), open one automatically so output is never lost.
@@ -244,12 +244,12 @@ void RunAction::EndOfRunAction(const G4Run* run)
       distCm = generatorAction->GetSourceDistance() / cm;
     }
     auto analysisManager = G4AnalysisManager::Instance();
-    for (G4int i = 0; i < kNumPixels; ++i) {
+    for (G4int i = 0; i < kMaxPixels; ++i) {
       analysisManager->FillNtupleDColumn(i, fPixelSum[i] / keV);
     }
-    analysisManager->FillNtupleDColumn(4, angleDeg);
-    analysisManager->FillNtupleDColumn(5, distCm);
-    analysisManager->FillNtupleIColumn(6, nofEvents);
+    analysisManager->FillNtupleDColumn(kMaxPixels, angleDeg);
+    analysisManager->FillNtupleDColumn(kMaxPixels + 1, distCm);
+    analysisManager->FillNtupleIColumn(kMaxPixels + 2, nofEvents);
     analysisManager->AddNtupleRow();
   }
 

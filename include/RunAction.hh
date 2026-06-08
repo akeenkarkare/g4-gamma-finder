@@ -60,8 +60,8 @@ class RunAction : public G4UserRunAction
     // Per-config aggregation: EventAction pushes each event's 4-pixel vector
     // here; EndOfRunAction writes ONE aggregated row (the config readout) so a
     // dataset of N configs is N rows, not N x events rows.
-    static constexpr G4int kNumPixels = 4;
-    void AddPixelVector(const G4double e[kNumPixels]);
+    static constexpr G4int kMaxPixels = 6;
+    void AddPixelVector(const G4double e[kMaxPixels]);
 
     // Dataset-file control (driven by /det/ UI commands). Open the ntuple
     // file once, run many beamOn's (configs), then write once.
@@ -78,7 +78,7 @@ class RunAction : public G4UserRunAction
     G4bool fFileOpen = false;
     G4bool fAutoFile = false;  // true if opened automatically (single-run macro)
 
-    G4double fPixelSum[kNumPixels] = {0., 0., 0., 0.};  // per-run pixel totals
+    G4double fPixelSum[kMaxPixels] = {0.};  // per-run pixel totals
 };
 
 }  // namespace B1
