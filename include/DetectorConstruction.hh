@@ -68,6 +68,8 @@ class DetectorConstruction : public G4VUserDetectorConstruction
     void SetPadding(G4double pad) { fPadding = pad; }
     void SetAsymCasing(G4double t) { fAsymCasingThk = t; }  // extra shield thickness on one side; 0 = uniform
     void SetAsymMaterial(G4String m) { fAsymMaterial = m; } // "Al" | "Pb" | "W"
+    void SetAsymMode(G4String m) { fAsymMode = m; }         // "arc" (half-shield) | "window" (near-full ring w/ hole)
+    void SetZStagger(G4double z) { fZStagger = z; }         // per-crystal z step (breaks planar front/back symmetry)
     G4String GetShape() const { return fShape; }
     G4double GetPadding() const { return fPadding; }
 
@@ -82,6 +84,8 @@ class DetectorConstruction : public G4VUserDetectorConstruction
     G4double fPadding = 1.0;          // lead padding FULL thickness in mm (default 1 mm)
     G4double fAsymCasingThk = 0.;     // extra shield on the -y half of each casing; 0 = uniform
     G4String fAsymMaterial = "Al";    // material of the asymmetric shield arc
+    G4String fAsymMode = "arc";       // "arc" = open half + shielded half; "window" = near-full ring with a hole
+    G4double fZStagger = 0.;          // per-crystal z step (i * fZStagger); 0 = coplanar
 
     static G4int fNumPixels;          // active crystal count for the built shape
 };

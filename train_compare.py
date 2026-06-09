@@ -28,6 +28,7 @@ Usage:
 import sys
 import os
 import numpy as np
+import os
 import torch
 import torch.nn as nn
 
@@ -36,6 +37,11 @@ SECTOR_DEG = 360.0 / SEG
 EPOCHS = 400
 BATCH = 64
 SEEDS = [0, 1, 2, 3, 4]   # average over several seeds/splits for a stable answer
+
+# If set (env USE_BANDS=1), use per-crystal per-band COUNT columns (c*_b*) as the
+# feature vector instead of the lumped per-crystal energy. Lets a crystal's
+# spectral shape (peak vs Compton) inform direction -- the multi-band experiment.
+USE_BANDS = os.environ.get("USE_BANDS", "0") == "1"
 
 
 # ---------------------------------------------------------------------------
@@ -69,14 +75,25 @@ def read_csv(path):
     # Locate columns by name (fallback to positional if header missing).
     if cols and "angle_deg" in cols:
         e_idx = [i for i, c in enumerate(cols) if c.startswith("e") and c.endswith("_keV")]
+        # Per-crystal per-band count columns are named c<i>_b<b>.
+        b_idx = [i for i, c in enumerate(cols)
+                 if c.startswith("c") and "_b" in c]
         a_idx = cols.index("angle_deg")
     else:
         e_idx = list(range(arr.shape[1] - 3))   # assume last 3 are angle,dist,n
+        b_idx = []
         a_idx = arr.shape[1] - 3
 
-    X = arr[:, e_idx]
+    # USE_BANDS (module global): if True and band columns exist, the feature
+    # vector is the per-crystal per-band counts INSTEAD of the lumped energy.
+    if USE_BANDS and b_idx:
+        feat_idx = b_idx
+    else:
+        feat_idx = e_idx
+
+    X = arr[:, feat_idx]
     ang = arr[:, a_idx]
-    # Drop crystal columns that are entirely zero (unused by this shape).
+    # Drop feature columns that are entirely zero (unused crystals/bands).
     active = X.sum(axis=0) > 0
     X = X[:, active]
     return X, ang

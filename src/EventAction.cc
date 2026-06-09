@@ -105,6 +105,15 @@ void EventAction::EndOfEventAction(const G4Event*)
     G4bool inRoi = !fRoiEnabled || (e >= fRoiLow && e <= fRoiHigh);
     gated[i] = (e > 0. && inRoi) ? fEdep[i] : 0.;
     total += gated[i];
+
+    // Multi-band spectral readout: classify this crystal's deposit into a
+    // PEAK band (around the 356 keV Ba-133 photopeak) or a COMPTON band (the
+    // lower-energy scatter continuum). Shielding degrades the spectrum, so the
+    // peak/Compton split carries extra directional info beyond total counts.
+    if (e > 0.) {
+      if (e >= 330. && e <= 370.)       fRunAction->AddBandCount(i, 0);  // peak
+      else if (e >= 40. && e < 330.)    fRunAction->AddBandCount(i, 1);  // Compton
+    }
   }
   fRunAction->AddPixelVector(gated);
   fRunAction->AddEdep(total);

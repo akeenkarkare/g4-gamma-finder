@@ -78,14 +78,21 @@ RunAction::RunAction()
   analysisManager->SetVerboseLevel(1);
   analysisManager->SetH1Activation(true);   // enable histogram filling
 
-  // Always write kMaxPixels (6) energy columns e0..e5; shapes with fewer
-  // crystals leave the unused columns at 0. Columns: e0..e5, angle, dist, n.
+  // Column layout (fixed so old/new files are parseable by name):
+  //   e0..e5            : per-crystal total ROI energy (cols 0..5)
+  //   c0_b0,c0_b1,...   : per-crystal per-band COUNTS (cols 6 .. 6+2*kMaxPixels-1)
+  //   angle_deg, dist_cm, nEvents
+  // Shapes with fewer crystals leave the unused columns at 0. The band columns
+  // give the ML the spectral shape (peak vs Compton) per crystal, not just total.
   analysisManager->CreateNtuple("pixels", "Aggregated per-config readout");
   for (G4int i = 0; i < kMaxPixels; ++i)
-    analysisManager->CreateNtupleDColumn("e" + std::to_string(i) + "_keV");  // 0..5
-  analysisManager->CreateNtupleDColumn("angle_deg"); // column kMaxPixels
-  analysisManager->CreateNtupleDColumn("dist_cm");   // column kMaxPixels+1
-  analysisManager->CreateNtupleIColumn("nEvents");   // column kMaxPixels+2
+    analysisManager->CreateNtupleDColumn("e" + std::to_string(i) + "_keV");
+  for (G4int i = 0; i < kMaxPixels; ++i)
+    for (G4int b = 0; b < kBands; ++b)
+      analysisManager->CreateNtupleDColumn("c" + std::to_string(i) + "_b" + std::to_string(b));
+  analysisManager->CreateNtupleDColumn("angle_deg");
+  analysisManager->CreateNtupleDColumn("dist_cm");
+  analysisManager->CreateNtupleIColumn("nEvents");
   analysisManager->FinishNtuple();
 
   // --- Per-crystal energy spectra (histograms) ---
@@ -157,6 +164,14 @@ void RunAction::AddPixelVector(const G4double e[kMaxPixels])
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
+void RunAction::AddBandCount(G4int pixel, G4int band)
+{
+  if (pixel >= 0 && pixel < kMaxPixels && band >= 0 && band < kBands)
+    fBandSum[pixel][band] += 1.0;
+}
+
+//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
+
 void RunAction::BeginOfRunAction(const G4Run*)
 {
   // inform the runManager to save random number seed
@@ -166,8 +181,11 @@ void RunAction::BeginOfRunAction(const G4Run*)
   G4AccumulableManager* accumulableManager = G4AccumulableManager::Instance();
   accumulableManager->Reset();
 
-  // Reset this config's per-pixel totals.
-  for (G4int i = 0; i < kMaxPixels; ++i) fPixelSum[i] = 0.;
+  // Reset this config's per-pixel totals and per-band counts.
+  for (G4int i = 0; i < kMaxPixels; ++i) {
+    fPixelSum[i] = 0.;
+    for (G4int b = 0; b < kBands; ++b) fBandSum[i][b] = 0.;
+  }
 
   // If the user did not explicitly open a dataset file (e.g. a simple
   // single-run macro), open one automatically so output is never lost.
@@ -244,12 +262,15 @@ void RunAction::EndOfRunAction(const G4Run* run)
       distCm = generatorAction->GetSourceDistance() / cm;
     }
     auto analysisManager = G4AnalysisManager::Instance();
-    for (G4int i = 0; i < kMaxPixels; ++i) {
-      analysisManager->FillNtupleDColumn(i, fPixelSum[i] / keV);
-    }
-    analysisManager->FillNtupleDColumn(kMaxPixels, angleDeg);
-    analysisManager->FillNtupleDColumn(kMaxPixels + 1, distCm);
-    analysisManager->FillNtupleIColumn(kMaxPixels + 2, nofEvents);
+    G4int col = 0;
+    for (G4int i = 0; i < kMaxPixels; ++i)
+      analysisManager->FillNtupleDColumn(col++, fPixelSum[i] / keV);   // energy cols
+    for (G4int i = 0; i < kMaxPixels; ++i)
+      for (G4int b = 0; b < kBands; ++b)
+        analysisManager->FillNtupleDColumn(col++, fBandSum[i][b]);     // band-count cols
+    analysisManager->FillNtupleDColumn(col++, angleDeg);
+    analysisManager->FillNtupleDColumn(col++, distCm);
+    analysisManager->FillNtupleIColumn(col++, nofEvents);
     analysisManager->AddNtupleRow();
   }
 

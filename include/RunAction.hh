@@ -61,7 +61,10 @@ class RunAction : public G4UserRunAction
     // here; EndOfRunAction writes ONE aggregated row (the config readout) so a
     // dataset of N configs is N rows, not N x events rows.
     static constexpr G4int kMaxPixels = 6;
+    static constexpr G4int kBands = 2;   // per-crystal energy bands: 0=peak, 1=Compton
     void AddPixelVector(const G4double e[kMaxPixels]);
+    // Add per-event counts to (pixel, band). Used for multi-band spectral readout.
+    void AddBandCount(G4int pixel, G4int band);
 
     // Dataset-file control (driven by /det/ UI commands). Open the ntuple
     // file once, run many beamOn's (configs), then write once.
@@ -78,7 +81,8 @@ class RunAction : public G4UserRunAction
     G4bool fFileOpen = false;
     G4bool fAutoFile = false;  // true if opened automatically (single-run macro)
 
-    G4double fPixelSum[kMaxPixels] = {0.};  // per-run pixel totals
+    G4double fPixelSum[kMaxPixels] = {0.};            // per-run pixel energy totals
+    G4double fBandSum[kMaxPixels][kBands] = {{0.}};   // per-run per-band counts
 };
 
 }  // namespace B1

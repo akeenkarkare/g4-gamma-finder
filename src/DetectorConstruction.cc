@@ -111,6 +111,20 @@ void DetectorConstruction::DefineCommands()
     "Material of the asymmetric directional shield: Al | Pb | W.");
   asymMatCmd.SetParameterName("mat", true);
   asymMatCmd.SetDefaultValue("Al");
+
+  auto& asymModeCmd = fMessenger->DeclareMethod(
+    "asymMode", &DetectorConstruction::SetAsymMode,
+    "Shield geometry: 'arc' (open half + shielded half) or "
+    "'window' (near-full lead ring with a hole/aperture facing outward).");
+  asymModeCmd.SetParameterName("mode", true);
+  asymModeCmd.SetDefaultValue("arc");
+
+  auto& zStagCmd = fMessenger->DeclareMethodWithUnit(
+    "zStagger", "cm", &DetectorConstruction::SetZStagger,
+    "Per-crystal vertical (z) step. Lifts crystal i by i*step to make the "
+    "array 3D/chiral and break the planar front/back degeneracy. 0 = coplanar.");
+  zStagCmd.SetParameterName("z", true);
+  zStagCmd.SetDefaultValue("0 cm");
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -126,7 +140,7 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
   // in the X-Y plane at distance d from the detector center. The envelope must
   // be large enough to contain the source for the chosen d. We use air (not
   // water) since the experiment is in open air, and size it for d up to ~1 m.
-  G4double env_sizeXY = 250 * cm, env_sizeZ = 20 * cm;
+  G4double env_sizeXY = 250 * cm, env_sizeZ = 60 * cm;  // tall enough for z-staggered arrays
   G4Material* env_mat = nist->FindOrBuildMaterial("G4_AIR");
 
   // Option to switch on/off checking of volumes overlaps
@@ -241,19 +255,34 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
   // single crystal's count rate depends on the source direction (gammas from
   // +y pass thin Al; from -y they cross the thick arc). Built as a 180-deg
   // phi-segment ring of extra Al hugging the outside of the casing.
+  // Build the directional shield. Convention: the shield's SENSITIVE direction
+  // (where gammas can reach the crystal) is at +y (90 deg) by construction; the
+  // placement code then rotates each crystal's shield to point its sensitive
+  // direction OUTWARD (away from the array centre).
+  //   - "arc":    shielded half on -y, open half on +y  (broad acceptance)
+  //   - "window": near-full lead ring with a small HOLE on +y (narrow aperture,
+  //               solid lead on the opposite side -> breaks front/back)
   G4LogicalVolume* logicAsym = nullptr;
   if (fAsymCasingThk > 0.) {
-    G4double extra = fAsymCasingThk;  // already in Geant4 length units (mm) from the messenger
-    // phi=0 is +x, 90 +y, 180 -x, 270 -y. Span [180,360] deg = the -y half
-    // (the lower half-plane, centered on -y at 270 deg).
-    auto solidAsym = new G4Tubs("AsymShield",
-                                casingRadius,                 // inner = casing outer
-                                casingRadius + extra,         // outer = + extra Al
-                                casingHalfZ,
-                                180. * deg, 180. * deg);      // start 180, span 180 -> -y half
+    G4double extra = fAsymCasingThk;  // Geant4 length units (mm) from the messenger
     G4Material* asym_mat = casing_mat;  // default Al
     if (fAsymMaterial == "Pb") asym_mat = lead_mat;
     else if (fAsymMaterial == "W") asym_mat = nist->FindOrBuildMaterial("G4_W");
+
+    G4Tubs* solidAsym;
+    if (fAsymMode == "window") {
+      // Lead ring covering 300 deg, leaving a 60-deg HOLE centred on +y (90 deg).
+      // Ring spans phi [120, 420] = [120, 360]+[0,60] -> hole is [60,120] around +y.
+      // G4Tubs takes (start, span): start 120 deg, span 300 deg.
+      solidAsym = new G4Tubs("AsymShield",
+                             casingRadius, casingRadius + extra, casingHalfZ,
+                             120. * deg, 300. * deg);
+    } else {
+      // "arc": shielded half on -y (phi [180,360]); open half on +y.
+      solidAsym = new G4Tubs("AsymShield",
+                             casingRadius, casingRadius + extra, casingHalfZ,
+                             180. * deg, 180. * deg);
+    }
     logicAsym = new G4LogicalVolume(solidAsym, asym_mat, "AsymShield");
   }
 
@@ -279,6 +308,16 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
     // their outward-facing (shielded-inward) sectors partition the circle.
     // Positions on a ring of radius ~1.15 cells: (0,2),(2,-1),(-2,-1)/scaled.
     cells = {{0, 2}, {2, -1}, {-2, -1}};
+  // --- 3-crystal arrays with UNEQUAL spacing (tests the spacing lever) ---
+  } else if (fShape == "tri_uneq1") {
+    // Collinear but unequal gaps: close pair + far one. Strong 1/r^2 asymmetry.
+    cells = {{0, 0}, {1, 0}, {4, 0}};
+  } else if (fShape == "tri_uneq2") {
+    // Right-angle, unequal arms: one neighbour near, one far. Breaks more symmetry.
+    cells = {{0, 0}, {1, 0}, {0, 3}};
+  } else if (fShape == "tri_uneq3") {
+    // Scalene triangle: all three pairwise gaps different.
+    cells = {{0, 0}, {3, 1}, {1, 3}};
   // --- 4-crystal (tetromino) shapes ---
   } else if (fShape == "S") {
     cells = {{1, 1}, {2, 1}, {0, 0}, {1, 0}};        // S / Z tetromino
@@ -351,9 +390,15 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
   };
 
   // --- Place casings + crystals ---------------------------------------------
+  // Optional z-stagger: crystal i is lifted by i*fZStagger. Combined with the
+  // outward arc shields, this makes inter-crystal shadowing front/back
+  // ASYMMETRIC (a back-side gamma must cross a neighbour at a different height),
+  // which is the only thing that can break the planar mirror degeneracy.
   std::vector<G4ThreeVector> pos;
+  G4double zMid = 0.5 * (fNumPixels - 1) * fZStagger;  // centre the stack in z
   for (G4int i = 0; i < fNumPixels; ++i) {
     G4ThreeVector p = cellPos(cells[i]);
+    p.setZ(i * fZStagger - zMid);
     pos.push_back(p);
 
     auto logicCasing =
@@ -365,17 +410,16 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
     new G4PVPlacement(nullptr, G4ThreeVector(0, 0, 0), fLogicPixel[i],
                       "Pixel" + std::to_string(i), logicCasing, false, i, checkOverlaps);
 
-    // Optional asymmetric directional shield arc. The shield is placed on the
-    // crystal's INWARD side (facing the array centre) so each crystal is OPEN to
-    // its own outward sector. This partitions the circle into distinct sectors
-    // and breaks the front/back degeneracy a plain array suffers.
-    // The shield solid is a half-arc centred on -y (270 deg); we rotate it so
-    // its centre points from the crystal toward the array centroid (origin).
+    // Place the directional shield so its SENSITIVE direction (open half / hole,
+    // built at +y) points OUTWARD -- away from the array centre. Each crystal is
+    // thus most sensitive to its own outward sector; the solid-lead opposite
+    // side blocks the back, breaking the front/back degeneracy.
     if (logicAsym) {
-      G4double inwardAng = std::atan2(-p.y(), -p.x());  // direction crystal->centre
-      // Default arc centre is at 270 deg (-y). Rotate so the arc centre aligns
-      // with the inward direction.
-      G4double rotZ = inwardAng - (-90. * deg);  // -90 deg = -y in atan2 convention
+      // Outward direction for this crystal (centre->crystal). For a single
+      // crystal at the origin, default outward = +y.
+      G4double outwardAng = (p.mag() > 1e-6) ? std::atan2(p.y(), p.x()) : 90. * deg;
+      // Shield's sensitive dir is built at +y = 90 deg; rotate to outwardAng.
+      G4double rotZ = outwardAng - 90. * deg;
       auto rot = new G4RotationMatrix();
       rot->rotateZ(-rotZ);
       new G4PVPlacement(rot, p, logicAsym,
