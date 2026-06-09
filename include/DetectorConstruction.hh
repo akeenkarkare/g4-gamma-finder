@@ -40,13 +40,12 @@ class G4GenericMessenger;
 namespace B1
 {
 
-/// Detector construction class to define materials and geometry.
-///
-/// The detector is a 4-crystal array whose ARRANGEMENT (shape) and lead
-/// padding thickness are configurable at run time via /det/ UI commands:
-///   /det/shape   square | S | J | T | L
-///   /det/padding <thickness> mm
-/// Re-issue /run/reinitializeGeometry after changing either.
+/// Detector construction: an N-crystal scintillator array (N = 1..kMaxPixels)
+/// whose arrangement, crystal size/material, casing, inter-pixel padding and
+/// optional directional shield are all configurable via /det/ UI commands
+/// (see DefineCommands). Set these BEFORE /run/initialize -- live geometry
+/// re-init is not used (it conflicts with the ToolsSG visualiser).
+/// Default: a 2x2 square of 2-inch LaBr3 crystals in aluminium casings.
 
 class DetectorConstruction : public G4VUserDetectorConstruction
 {
@@ -86,7 +85,7 @@ class DetectorConstruction : public G4VUserDetectorConstruction
     G4LogicalVolume* fLogicPixel[kMaxPixels] = {nullptr};
     G4GenericMessenger* fMessenger = nullptr;
 
-    G4String fShape = "square";       // square|S|J|T|L (4) | P|F (5) | H|U (6)
+    G4String fShape = "square";       // see ShapeTable in the .cc for all names
     G4double fPadding = 1.0;          // lead padding FULL thickness in mm (default 1 mm)
     G4double fAsymCasingThk = 0.;     // extra shield on the -y half of each casing; 0 = uniform
     G4String fAsymMaterial = "Al";    // material of the asymmetric shield arc

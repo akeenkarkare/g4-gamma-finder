@@ -12,5 +12,9 @@ save/models/
 save/training/
 runs/
 
+# ...but keep the curated key result datasets (small, for reproducibility)
+!datasets_keep/
+!datasets_keep/*.csv
+
 # OS cruft
 .DS_Store

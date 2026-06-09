@@ -29,7 +29,6 @@
 #include "DetectorConstruction.hh"
 
 #include "G4Box.hh"
-#include "G4Cons.hh"
 #include "G4Element.hh"
 #include "G4LogicalVolume.hh"
 #include "G4Material.hh"
@@ -41,14 +40,126 @@
 #include "G4Tubs.hh"
 #include "G4VSolid.hh"
 
-#include <cctype>
 #include <cmath>
+#include <map>
 #include <sstream>
 #include <string>
 #include <vector>
 
 namespace B1
 {
+
+//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
+
+// A crystal position on the integer (col,row) grid; scaled by the pitch and
+// centred on the array centroid at placement time.
+namespace {
+
+struct Cell { int col; int row; };
+
+// Named detector arrangements. The crystal count is just cells.size():
+//   3: tri, L3, tri3, tri_uneq1..3   (3-crystal studies)
+//   4: square, S, J, T, L            (tetrominoes)
+//   5: pF,pI,pL,pN,pP,pT,pU,pV,pW,pX,pY,pZ   (all 12 pentominoes)
+//   6: h01..h35                      (all 35 hexominoes)
+//   1: single                        (single-crystal casing tests)
+// Plus "custom" (parsed from /det/cells at runtime) handled separately.
+const std::map<G4String, std::vector<Cell>>& ShapeTable()
+{
+  static const std::map<G4String, std::vector<Cell>> table = {
+    {"single", {{0,0}}},
+    // 3-crystal
+    {"tri",  {{0,0},{2,0},{1,1}}},
+    {"L3",   {{0,1},{0,0},{1,0}}},
+    {"tri3", {{0,2},{2,-1},{-2,-1}}},
+    {"tri_uneq1", {{0,0},{1,0},{4,0}}},
+    {"tri_uneq2", {{0,0},{1,0},{0,3}}},
+    {"tri_uneq3", {{0,0},{3,1},{1,3}}},
+    // 4-crystal tetrominoes
+    {"square", {{0,1},{1,1},{0,0},{1,0}}},
+    {"S", {{1,1},{2,1},{0,0},{1,0}}},
+    {"J", {{0,1},{0,0},{1,0},{2,0}}},
+    {"T", {{1,1},{0,0},{1,0},{2,0}}},
+    {"L", {{0,2},{0,1},{0,0},{1,0}}},
+    // 5-crystal pentominoes (all 12)
+    {"pF", {{1,2},{2,2},{0,1},{1,1},{1,0}}},
+    {"pI", {{0,0},{0,1},{0,2},{0,3},{0,4}}},
+    {"pL", {{0,0},{0,1},{0,2},{0,3},{1,0}}},
+    {"pN", {{0,0},{0,1},{1,1},{1,2},{1,3}}},
+    {"pP", {{0,0},{0,1},{1,0},{1,1},{1,2}}},
+    {"pT", {{0,2},{1,2},{2,2},{1,1},{1,0}}},
+    {"pU", {{0,0},{0,1},{1,0},{2,0},{2,1}}},
+    {"pV", {{0,0},{0,1},{0,2},{1,0},{2,0}}},
+    {"pW", {{0,2},{0,1},{1,1},{1,0},{2,0}}},
+    {"pX", {{1,2},{0,1},{1,1},{2,1},{1,0}}},
+    {"pY", {{1,0},{1,1},{1,2},{1,3},{0,1}}},
+    {"pZ", {{0,2},{1,2},{1,1},{1,0},{2,0}}},
+    // 6-crystal hexominoes (all 35)
+    {"h01", {{0,0},{1,0},{2,0},{3,0},{4,0},{5,0}}},
+    {"h02", {{0,0},{1,0},{2,0},{3,0},{4,0},{0,1}}},
+    {"h03", {{0,0},{1,0},{2,0},{3,0},{4,0},{1,1}}},
+    {"h04", {{0,0},{1,0},{2,0},{3,0},{4,0},{2,1}}},
+    {"h05", {{0,0},{1,0},{2,0},{3,0},{0,1},{1,1}}},
+    {"h06", {{0,0},{1,0},{2,0},{3,0},{0,1},{2,1}}},
+    {"h07", {{0,0},{1,0},{2,0},{3,0},{0,1},{3,1}}},
+    {"h08", {{0,0},{1,0},{2,0},{3,0},{1,1},{2,1}}},
+    {"h09", {{0,0},{1,0},{2,0},{3,0},{1,1},{3,1}}},
+    {"h10", {{0,0},{1,0},{2,0},{3,0},{2,1},{3,1}}},
+    {"h11", {{1,0},{2,0},{3,0},{0,1},{1,1},{2,1}}},
+    {"h12", {{0,0},{1,0},{2,0},{1,1},{2,1},{3,1}}},
+    {"h13", {{0,0},{1,0},{2,0},{0,1},{1,1},{2,1}}},
+    {"h14", {{0,1},{1,1},{2,1},{2,0},{3,0},{4,0}}},
+    {"h15", {{0,0},{1,0},{2,0},{2,1},{3,1},{3,2}}},
+    {"h16", {{0,0},{1,0},{2,0},{0,1},{0,2},{0,3}}},
+    {"h17", {{0,0},{1,0},{2,0},{2,1},{2,2},{2,3}}},
+    {"h18", {{0,3},{0,2},{0,1},{0,0},{1,0},{2,0}}},
+    {"h19", {{0,0},{0,1},{0,2},{0,3},{1,3},{2,3}}},
+    {"h20", {{0,0},{0,1},{0,2},{0,3},{1,0},{1,3}}},
+    {"h21", {{0,0},{1,0},{0,1},{0,2},{0,3},{0,4}}},
+    {"h22", {{0,0},{0,1},{0,2},{0,3},{0,4},{1,2}}},
+    {"h23", {{0,0},{1,0},{1,1},{1,2},{2,2},{2,3}}},
+    {"h24", {{0,0},{1,0},{1,1},{2,1},{2,2},{3,2}}},
+    {"h25", {{0,0},{1,0},{1,1},{1,2},{1,3},{2,3}}},
+    {"h26", {{0,0},{0,1},{1,1},{1,2},{2,2},{2,3}}},
+    {"h27", {{1,0},{1,1},{0,1},{0,2},{1,2},{1,3}}},
+    {"h28", {{1,0},{0,1},{1,1},{2,1},{1,2},{1,3}}},
+    {"h29", {{1,0},{0,1},{1,1},{2,1},{0,2},{2,2}}},
+    {"h30", {{0,0},{2,0},{0,1},{1,1},{2,1},{1,2}}},
+    {"h31", {{1,0},{0,1},{1,1},{2,1},{1,2},{0,2}}},
+    {"h32", {{0,0},{1,0},{2,0},{1,1},{1,2},{2,2}}},
+    {"h33", {{0,0},{1,0},{2,0},{0,1},{1,1},{1,2}}},
+    {"h34", {{0,0},{1,0},{1,1},{2,1},{0,1},{1,2}}},
+    {"h35", {{0,1},{1,1},{2,1},{1,0},{1,2},{0,2}}},
+  };
+  return table;
+}
+
+// Resolve a shape name (or "custom" spec) into crystal cells. Returns the
+// resolved name (may fall back to "square") via `resolvedName`.
+std::vector<Cell> BuildLayout(const G4String& shape, const G4String& cellSpec,
+                              G4String& resolvedName)
+{
+  std::vector<Cell> cells;
+  if (shape == "custom" && !cellSpec.empty()) {
+    std::stringstream ss(cellSpec);
+    std::string tok;
+    while (std::getline(ss, tok, ';')) {
+      auto comma = tok.find(',');
+      if (comma == std::string::npos) continue;
+      cells.push_back({std::stoi(tok.substr(0, comma)),
+                       std::stoi(tok.substr(comma + 1))});
+    }
+    resolvedName = "custom";
+    if (!cells.empty()) return cells;
+  }
+  const auto& table = ShapeTable();
+  auto it = table.find(shape);
+  if (it != table.end()) { resolvedName = shape; return it->second; }
+  resolvedName = "square";                       // fallback
+  return table.at("square");
+}
+
+}  // anonymous namespace
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
@@ -75,8 +186,8 @@ DetectorConstruction::~DetectorConstruction()
 
 void DetectorConstruction::SetShape(G4String shape)
 {
-  // Accept square | S | J | T | L (case-insensitive on the first letter for
-  // the tetrominoes; "square" must be spelled out).
+  // Name must match a ShapeTable key (see the .cc); unknown names fall back to
+  // "square" in BuildLayout. Use /det/cells for arbitrary polyominoes.
   fShape = shape;
 }
 
@@ -96,8 +207,9 @@ void DetectorConstruction::DefineCommands()
 
   auto& shapeCmd = fMessenger->DeclareMethod(
     "shape", &DetectorConstruction::SetShape,
-    "Crystal arrangement: square|S|J|T|L (4) | P|F|W (5) | grid6|A6 (6). "
-    "Run /run/reinitializeGeometry afterwards.");
+    "Crystal arrangement: 3-crystal (tri,L3,tri3,...), 4 (square,S,J,T,L), "
+    "5 (pF..pZ, all 12 pentominoes), 6 (h01..h35, all 35 hexominoes), or single. "
+    "Use /det/cells for arbitrary polyominoes. Set before /run/initialize.");
   shapeCmd.SetParameterName("shape", true);
   shapeCmd.SetDefaultValue("square");
 
@@ -110,15 +222,15 @@ void DetectorConstruction::DefineCommands()
 
   auto& asymCmd = fMessenger->DeclareMethodWithUnit(
     "asymCasing", "mm", &DetectorConstruction::SetAsymCasing,
-    "Extra aluminium thickness on the -y half of each crystal casing (mm). "
-    "0 = uniform casing. Breaks rotational symmetry to make a single crystal "
-    "directionally sensitive.");
+    "Extra directional shield thickness on one side of each crystal (mm). "
+    "0 = none. Breaks rotational symmetry to make a single crystal "
+    "directionally sensitive (material set by /det/asymMaterial).");
   asymCmd.SetParameterName("thk", true);
   asymCmd.SetDefaultValue("0 mm");
 
   auto& asymMatCmd = fMessenger->DeclareMethod(
     "asymMaterial", &DetectorConstruction::SetAsymMaterial,
-    "Material of the asymmetric directional shield: Al | Pb | W.");
+    "Material of the asymmetric directional shield: Al | Pb | W | WNiFe.");
   asymMatCmd.SetParameterName("mat", true);
   asymMatCmd.SetDefaultValue("Al");
 
@@ -237,14 +349,13 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
   //
   // Gamma direction detector prototype
   //
-  // 2x2 grid of LaBr3:Ce scintillator crystals separated by thin lead padding,
-  // following the configuration of Okabe et al., Nat. Commun. 15:3061 (2024)
-  // but with 2-inch crystals (the hardware we will use).
+  // N-crystal scintillator array (default: 2x2 LaBr3, 2-inch, Al casings),
+  // following Okabe et al., Nat. Commun. 15:3061 (2024). Arrangement, size,
+  // material, casing, padding and directional shield are all set via /det/.
   //
-  // Geometry note: the paper treats the detector and source as coplanar,
-  // with the source direction defined as an angle theta in the detector
-  // plane. We keep the detector face in the X-Y plane here; the source
-  // angle is handled by the primary generator.
+  // Geometry note: detector and source are coplanar (paper geometry); the
+  // detector face lies in the X-Y plane and the source direction is an angle
+  // theta in that plane, handled by the primary generator.
 
   // --- Materials ---
   // Lanthanum bromide (LaBr3), Ce-doped. LaBr3 is not a NIST material, so
@@ -353,138 +464,11 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
     logicAsym = new G4LogicalVolume(solidAsym, asym_mat, "AsymShield");
   }
 
-  // --- Shape layouts on an integer (col,row) grid ---------------------------
-  // Each shape is 4 cells. The array is centered on its centroid before
-  // placement. Copy number = pixel index = order in this list.
-  //   square: 2x2          S:   _ X X       J:   X _ _      T:   _ X _      L: X _ _
-  //           X X               X X _            X X X           X X X          X _ _
-  //           X X                                                              X X
-  // (rows increase upward in y; cols increase to the right in x)
-  struct Cell { int col; int row; };
-  std::vector<Cell> cells;
-  // --- custom polyomino from /det/cells "col,row;col,row;..." ---
-  // Lets any arrangement (e.g. all 108 heptominoes) be specified at runtime
-  // without recompiling. Parsed into integer (col,row) cells.
-  if (fShape == "custom" && !fCellSpec.empty()) {
-    std::stringstream ss(fCellSpec);
-    std::string tok;
-    while (std::getline(ss, tok, ';')) {
-      if (tok.empty()) continue;
-      auto comma = tok.find(',');
-      if (comma == std::string::npos) continue;
-      int col = std::stoi(tok.substr(0, comma));
-      int row = std::stoi(tok.substr(comma + 1));
-      cells.push_back({col, row});
-    }
-  // --- single crystal (for casing-asymmetry tests) ---
-  } else if (fShape == "single") {
-    cells = {{0, 0}};
-  // --- 3-crystal arrays (for the 'fewer shaped detectors' study) ---
-  } else if (fShape == "tri") {
-    cells = {{0, 0}, {2, 0}, {1, 1}};   // triangle (compact, asymmetric)
-  } else if (fShape == "L3") {
-    cells = {{0, 1}, {0, 0}, {1, 0}};   // L-tromino
-  } else if (fShape == "tri3") {
-    // Equilateral-ish triangle: 3 crystals ~120 deg apart around the centre, so
-    // their outward-facing (shielded-inward) sectors partition the circle.
-    // Positions on a ring of radius ~1.15 cells: (0,2),(2,-1),(-2,-1)/scaled.
-    cells = {{0, 2}, {2, -1}, {-2, -1}};
-  // --- 3-crystal arrays with UNEQUAL spacing (tests the spacing lever) ---
-  } else if (fShape == "tri_uneq1") {
-    // Collinear but unequal gaps: close pair + far one. Strong 1/r^2 asymmetry.
-    cells = {{0, 0}, {1, 0}, {4, 0}};
-  } else if (fShape == "tri_uneq2") {
-    // Right-angle, unequal arms: one neighbour near, one far. Breaks more symmetry.
-    cells = {{0, 0}, {1, 0}, {0, 3}};
-  } else if (fShape == "tri_uneq3") {
-    // Scalene triangle: all three pairwise gaps different.
-    cells = {{0, 0}, {3, 1}, {1, 3}};
-  // --- 4-crystal (tetromino) shapes ---
-  } else if (fShape == "S") {
-    cells = {{1, 1}, {2, 1}, {0, 0}, {1, 0}};        // S / Z tetromino
-  } else if (fShape == "J") {
-    cells = {{0, 1}, {0, 0}, {1, 0}, {2, 0}};        // J tetromino
-  } else if (fShape == "T") {
-    cells = {{1, 1}, {0, 0}, {1, 0}, {2, 0}};        // T tetromino
-  } else if (fShape == "L") {
-    cells = {{0, 2}, {0, 1}, {0, 0}, {1, 0}};        // L tetromino
-
-  // --- 5-crystal: all 12 free pentominoes ---
-  } else if (fShape == "pF") {
-    cells = {{1, 2}, {2, 2}, {0, 1}, {1, 1}, {1, 0}};
-  } else if (fShape == "pI") {
-    cells = {{0, 0}, {0, 1}, {0, 2}, {0, 3}, {0, 4}};
-  } else if (fShape == "pL") {
-    cells = {{0, 0}, {0, 1}, {0, 2}, {0, 3}, {1, 0}};
-  } else if (fShape == "pN") {
-    cells = {{0, 0}, {0, 1}, {1, 1}, {1, 2}, {1, 3}};
-  } else if (fShape == "pP") {
-    cells = {{0, 0}, {0, 1}, {1, 0}, {1, 1}, {1, 2}};
-  } else if (fShape == "pT") {
-    cells = {{0, 2}, {1, 2}, {2, 2}, {1, 1}, {1, 0}};
-  } else if (fShape == "pU") {
-    cells = {{0, 0}, {0, 1}, {1, 0}, {2, 0}, {2, 1}};
-  } else if (fShape == "pV") {
-    cells = {{0, 0}, {0, 1}, {0, 2}, {1, 0}, {2, 0}};
-  } else if (fShape == "pW") {
-    cells = {{0, 2}, {0, 1}, {1, 1}, {1, 0}, {2, 0}};
-  } else if (fShape == "pX") {
-    cells = {{1, 2}, {0, 1}, {1, 1}, {2, 1}, {1, 0}};
-  } else if (fShape == "pY") {
-    cells = {{1, 0}, {1, 1}, {1, 2}, {1, 3}, {0, 1}};
-  } else if (fShape == "pZ") {
-    cells = {{0, 2}, {1, 2}, {1, 1}, {1, 0}, {2, 0}};
-
-  // --- 6-crystal: all 35 free hexominoes (named h01..h35) ---
-  // Each entry is a canonical 6-cell polyomino. Used for the crystal-count knee
-  // study so the BEST 6-shape is found by exhaustive search, not guessed.
-  } else if (fShape.rfind("h", 0) == 0 && fShape.size() == 3 &&
-             std::isdigit(fShape[1]) && std::isdigit(fShape[2])) {
-    static const std::vector<std::vector<Cell>> HEX = {
-      /*h01 I*/ {{0,0},{1,0},{2,0},{3,0},{4,0},{5,0}},
-      /*h02*/   {{0,0},{1,0},{2,0},{3,0},{4,0},{0,1}},
-      /*h03*/   {{0,0},{1,0},{2,0},{3,0},{4,0},{1,1}},
-      /*h04*/   {{0,0},{1,0},{2,0},{3,0},{4,0},{2,1}},
-      /*h05*/   {{0,0},{1,0},{2,0},{3,0},{0,1},{1,1}},
-      /*h06*/   {{0,0},{1,0},{2,0},{3,0},{0,1},{2,1}},
-      /*h07*/   {{0,0},{1,0},{2,0},{3,0},{0,1},{3,1}},
-      /*h08*/   {{0,0},{1,0},{2,0},{3,0},{1,1},{2,1}},
-      /*h09*/   {{0,0},{1,0},{2,0},{3,0},{1,1},{3,1}},
-      /*h10*/   {{0,0},{1,0},{2,0},{3,0},{2,1},{3,1}},
-      /*h11*/   {{1,0},{2,0},{3,0},{0,1},{1,1},{2,1}},
-      /*h12*/   {{0,0},{1,0},{2,0},{1,1},{2,1},{3,1}},
-      /*h13*/   {{0,0},{1,0},{2,0},{0,1},{1,1},{2,1}}, // 3x2 block (alt)
-      /*h14*/   {{0,1},{1,1},{2,1},{2,0},{3,0},{4,0}},
-      /*h15*/   {{0,0},{1,0},{2,0},{2,1},{3,1},{3,2}},
-      /*h16*/   {{0,0},{1,0},{2,0},{0,1},{0,2},{0,3}}, // L
-      /*h17*/   {{0,0},{1,0},{2,0},{2,1},{2,2},{2,3}},
-      /*h18*/   {{0,3},{0,2},{0,1},{0,0},{1,0},{2,0}},
-      /*h19*/   {{0,0},{0,1},{0,2},{0,3},{1,3},{2,3}},
-      /*h20*/   {{0,0},{0,1},{0,2},{0,3},{1,0},{1,3}}, // U-ish tall
-      /*h21*/   {{0,0},{1,0},{0,1},{0,2},{0,3},{0,4}}, // Y-ish
-      /*h22*/   {{0,0},{0,1},{0,2},{0,3},{0,4},{1,2}},
-      /*h23*/   {{0,0},{1,0},{1,1},{1,2},{2,2},{2,3}}, // W-ish
-      /*h24*/   {{0,0},{1,0},{1,1},{2,1},{2,2},{3,2}}, // staircase
-      /*h25*/   {{0,0},{1,0},{1,1},{1,2},{1,3},{2,3}}, // N/Z extended
-      /*h26*/   {{0,0},{0,1},{1,1},{1,2},{2,2},{2,3}},
-      /*h27*/   {{1,0},{1,1},{0,1},{0,2},{1,2},{1,3}}, // F-ish
-      /*h28*/   {{1,0},{0,1},{1,1},{2,1},{1,2},{1,3}}, // plus-tail
-      /*h29*/   {{1,0},{0,1},{1,1},{2,1},{0,2},{2,2}},
-      /*h30*/   {{0,0},{2,0},{0,1},{1,1},{2,1},{1,2}},
-      /*h31*/   {{1,0},{0,1},{1,1},{2,1},{1,2},{0,2}},
-      /*h32*/   {{0,0},{1,0},{2,0},{1,1},{1,2},{2,2}},
-      /*h33*/   {{0,0},{1,0},{2,0},{0,1},{1,1},{1,2}},
-      /*h34*/   {{0,0},{1,0},{1,1},{2,1},{0,1},{1,2}},
-      /*h35*/   {{0,1},{1,1},{2,1},{1,0},{1,2},{0,2}},
-    };
-    int idx = (fShape[1]-'0')*10 + (fShape[2]-'0') - 1;  // h01->0 .. h35->34
-    if (idx >= 0 && idx < (int)HEX.size()) cells = HEX[idx];
-    else { fShape = "square"; cells = {{0,1},{1,1},{0,0},{1,0}}; }
-
-  } else {
-    fShape = "square";
-    cells = {{0, 1}, {1, 1}, {0, 0}, {1, 0}};        // 2x2 square
-  }
+  // --- Shape layout -----------------------------------------------------------
+  // Resolve the named shape (or a runtime /det/cells "custom" spec) into a list
+  // of (col,row) grid cells via the ShapeTable. Copy number = pixel index =
+  // order in the list. Rows increase upward in y, cols to the right in x.
+  std::vector<Cell> cells = BuildLayout(fShape, fCellSpec, fShape);
 
   // Record the active crystal count for the rest of the framework.
   fNumPixels = static_cast<G4int>(cells.size());
