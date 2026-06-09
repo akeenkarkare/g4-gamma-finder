@@ -40,7 +40,9 @@
 #include "G4SystemOfUnits.hh"
 #include "G4Tubs.hh"
 
+#include <cctype>
 #include <cmath>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -125,6 +127,14 @@ void DetectorConstruction::DefineCommands()
     "array 3D/chiral and break the planar front/back degeneracy. 0 = coplanar.");
   zStagCmd.SetParameterName("z", true);
   zStagCmd.SetDefaultValue("0 cm");
+
+  auto& cellsCmd = fMessenger->DeclareMethod(
+    "cells", &DetectorConstruction::SetCells,
+    "Custom polyomino as 'col,row;col,row;...' (integer grid cells). Sets shape "
+    "to 'custom'. Lets any arrangement (e.g. heptominoes) be built without "
+    "recompiling. Up to kMaxPixels crystals.");
+  cellsCmd.SetParameterName("spec", true);
+  cellsCmd.SetDefaultValue("");
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -214,6 +224,15 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
   labr3->AddElement(elLa, 1);
   labr3->AddElement(elBr, 3);
 
+  // Tungsten heavy alloy (W-Ni-Fe), a dense, machinable, non-toxic shielding
+  // material -- denser than lead (~18 vs 11.3 g/cm3) so it shields more per mm.
+  // Typical "90W" composition: 90% W, 6% Ni, 4% Fe by mass.
+  G4double wnifeDensity = 18.0 * g / cm3;
+  auto wnife = new G4Material("WNiFe", wnifeDensity, 3);
+  wnife->AddElement(nist->FindOrBuildElement("W"),  0.90);
+  wnife->AddElement(nist->FindOrBuildElement("Ni"), 0.06);
+  wnife->AddElement(nist->FindOrBuildElement("Fe"), 0.04);
+
   G4Material* pixel_mat  = labr3;
   G4Material* lead_mat   = nist->FindOrBuildMaterial("G4_Pb");
   G4Material* casing_mat = nist->FindOrBuildMaterial("G4_Al");
@@ -268,6 +287,7 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
     G4Material* asym_mat = casing_mat;  // default Al
     if (fAsymMaterial == "Pb") asym_mat = lead_mat;
     else if (fAsymMaterial == "W") asym_mat = nist->FindOrBuildMaterial("G4_W");
+    else if (fAsymMaterial == "WNiFe") asym_mat = wnife;
 
     G4Tubs* solidAsym;
     if (fAsymMode == "window") {
@@ -295,8 +315,22 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
   // (rows increase upward in y; cols increase to the right in x)
   struct Cell { int col; int row; };
   std::vector<Cell> cells;
+  // --- custom polyomino from /det/cells "col,row;col,row;..." ---
+  // Lets any arrangement (e.g. all 108 heptominoes) be specified at runtime
+  // without recompiling. Parsed into integer (col,row) cells.
+  if (fShape == "custom" && !fCellSpec.empty()) {
+    std::stringstream ss(fCellSpec);
+    std::string tok;
+    while (std::getline(ss, tok, ';')) {
+      if (tok.empty()) continue;
+      auto comma = tok.find(',');
+      if (comma == std::string::npos) continue;
+      int col = std::stoi(tok.substr(0, comma));
+      int row = std::stoi(tok.substr(comma + 1));
+      cells.push_back({col, row});
+    }
   // --- single crystal (for casing-asymmetry tests) ---
-  if (fShape == "single") {
+  } else if (fShape == "single") {
     cells = {{0, 0}};
   // --- 3-crystal arrays (for the 'fewer shaped detectors' study) ---
   } else if (fShape == "tri") {
@@ -354,23 +388,51 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
   } else if (fShape == "pZ") {
     cells = {{0, 2}, {1, 2}, {1, 1}, {1, 0}, {2, 0}};
 
-  // --- 6-crystal hexominoes (asymmetric-weighted + 1 symmetric baseline) ---
-  } else if (fShape == "hGrid") {       // 2x3 rectangle (symmetric baseline)
-    cells = {{0, 1}, {1, 1}, {2, 1}, {0, 0}, {1, 0}, {2, 0}};
-  } else if (fShape == "hA") {          // staggered, no symmetry axis
-    cells = {{1, 2}, {0, 1}, {1, 1}, {2, 1}, {2, 0}, {0, 0}};
-  } else if (fShape == "hL") {          // long L (asymmetric)
-    cells = {{0, 0}, {0, 1}, {0, 2}, {0, 3}, {0, 4}, {1, 0}};
-  } else if (fShape == "hY") {          // Y-hexomino (asymmetric)
-    cells = {{1, 0}, {1, 1}, {1, 2}, {1, 3}, {1, 4}, {0, 2}};
-  } else if (fShape == "hN") {          // extended N / S (asymmetric)
-    cells = {{0, 0}, {0, 1}, {0, 2}, {1, 2}, {1, 3}, {1, 4}};
-  } else if (fShape == "hZ") {          // extended Z (point asymmetric)
-    cells = {{0, 0}, {1, 0}, {1, 1}, {1, 2}, {1, 3}, {2, 3}};
-  } else if (fShape == "hW") {          // staircase (asymmetric)
-    cells = {{0, 0}, {1, 0}, {1, 1}, {2, 1}, {2, 2}, {3, 2}};
-  } else if (fShape == "hF") {          // F-like extension (asymmetric)
-    cells = {{1, 3}, {2, 3}, {1, 2}, {0, 1}, {1, 1}, {1, 0}};
+  // --- 6-crystal: all 35 free hexominoes (named h01..h35) ---
+  // Each entry is a canonical 6-cell polyomino. Used for the crystal-count knee
+  // study so the BEST 6-shape is found by exhaustive search, not guessed.
+  } else if (fShape.rfind("h", 0) == 0 && fShape.size() == 3 &&
+             std::isdigit(fShape[1]) && std::isdigit(fShape[2])) {
+    static const std::vector<std::vector<Cell>> HEX = {
+      /*h01 I*/ {{0,0},{1,0},{2,0},{3,0},{4,0},{5,0}},
+      /*h02*/   {{0,0},{1,0},{2,0},{3,0},{4,0},{0,1}},
+      /*h03*/   {{0,0},{1,0},{2,0},{3,0},{4,0},{1,1}},
+      /*h04*/   {{0,0},{1,0},{2,0},{3,0},{4,0},{2,1}},
+      /*h05*/   {{0,0},{1,0},{2,0},{3,0},{0,1},{1,1}},
+      /*h06*/   {{0,0},{1,0},{2,0},{3,0},{0,1},{2,1}},
+      /*h07*/   {{0,0},{1,0},{2,0},{3,0},{0,1},{3,1}},
+      /*h08*/   {{0,0},{1,0},{2,0},{3,0},{1,1},{2,1}},
+      /*h09*/   {{0,0},{1,0},{2,0},{3,0},{1,1},{3,1}},
+      /*h10*/   {{0,0},{1,0},{2,0},{3,0},{2,1},{3,1}},
+      /*h11*/   {{1,0},{2,0},{3,0},{0,1},{1,1},{2,1}},
+      /*h12*/   {{0,0},{1,0},{2,0},{1,1},{2,1},{3,1}},
+      /*h13*/   {{0,0},{1,0},{2,0},{0,1},{1,1},{2,1}}, // 3x2 block (alt)
+      /*h14*/   {{0,1},{1,1},{2,1},{2,0},{3,0},{4,0}},
+      /*h15*/   {{0,0},{1,0},{2,0},{2,1},{3,1},{3,2}},
+      /*h16*/   {{0,0},{1,0},{2,0},{0,1},{0,2},{0,3}}, // L
+      /*h17*/   {{0,0},{1,0},{2,0},{2,1},{2,2},{2,3}},
+      /*h18*/   {{0,3},{0,2},{0,1},{0,0},{1,0},{2,0}},
+      /*h19*/   {{0,0},{0,1},{0,2},{0,3},{1,3},{2,3}},
+      /*h20*/   {{0,0},{0,1},{0,2},{0,3},{1,0},{1,3}}, // U-ish tall
+      /*h21*/   {{0,0},{1,0},{0,1},{0,2},{0,3},{0,4}}, // Y-ish
+      /*h22*/   {{0,0},{0,1},{0,2},{0,3},{0,4},{1,2}},
+      /*h23*/   {{0,0},{1,0},{1,1},{1,2},{2,2},{2,3}}, // W-ish
+      /*h24*/   {{0,0},{1,0},{1,1},{2,1},{2,2},{3,2}}, // staircase
+      /*h25*/   {{0,0},{1,0},{1,1},{1,2},{1,3},{2,3}}, // N/Z extended
+      /*h26*/   {{0,0},{0,1},{1,1},{1,2},{2,2},{2,3}},
+      /*h27*/   {{1,0},{1,1},{0,1},{0,2},{1,2},{1,3}}, // F-ish
+      /*h28*/   {{1,0},{0,1},{1,1},{2,1},{1,2},{1,3}}, // plus-tail
+      /*h29*/   {{1,0},{0,1},{1,1},{2,1},{0,2},{2,2}},
+      /*h30*/   {{0,0},{2,0},{0,1},{1,1},{2,1},{1,2}},
+      /*h31*/   {{1,0},{0,1},{1,1},{2,1},{1,2},{0,2}},
+      /*h32*/   {{0,0},{1,0},{2,0},{1,1},{1,2},{2,2}},
+      /*h33*/   {{0,0},{1,0},{2,0},{0,1},{1,1},{1,2}},
+      /*h34*/   {{0,0},{1,0},{1,1},{2,1},{0,1},{1,2}},
+      /*h35*/   {{0,1},{1,1},{2,1},{1,0},{1,2},{0,2}},
+    };
+    int idx = (fShape[1]-'0')*10 + (fShape[2]-'0') - 1;  // h01->0 .. h35->34
+    if (idx >= 0 && idx < (int)HEX.size()) cells = HEX[idx];
+    else { fShape = "square"; cells = {{0,1},{1,1},{0,0},{1,0}}; }
 
   } else {
     fShape = "square";

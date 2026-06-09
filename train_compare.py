@@ -43,6 +43,13 @@ SEEDS = [0, 1, 2, 3, 4]   # average over several seeds/splits for a stable answe
 # spectral shape (peak vs Compton) inform direction -- the multi-band experiment.
 USE_BANDS = os.environ.get("USE_BANDS", "0") == "1"
 
+# Use the GPU if available (big speedup on the RTX 4070 for the heptomino sweep).
+# Force CPU with env CPU=1.
+if torch.cuda.is_available() and os.environ.get("CPU", "0") != "1":
+    DEVICE = torch.device("cuda")
+else:
+    DEVICE = torch.device("cpu")
+
 
 # ---------------------------------------------------------------------------
 # Data
@@ -180,17 +187,19 @@ def train_eval_seed(Xn, Y, seed):
     te, tr = idx[:ntest], idx[ntest:]
 
     dt = torch.float64
-    Xtr = torch.tensor(Xn[tr], dtype=dt); Ytr = torch.tensor(Y[tr], dtype=dt)
-    Xte = torch.tensor(Xn[te], dtype=dt); Yte = torch.tensor(Y[te], dtype=dt)
+    Xtr = torch.tensor(Xn[tr], dtype=dt, device=DEVICE)
+    Ytr = torch.tensor(Y[tr], dtype=dt, device=DEVICE)
+    Xte = torch.tensor(Xn[te], dtype=dt, device=DEVICE)
+    Yte = torch.tensor(Y[te], dtype=dt, device=DEVICE)
 
-    net = DirNet(n_in=Xn.shape[1]).double()
+    net = DirNet(n_in=Xn.shape[1]).double().to(DEVICE)
     opt = torch.optim.Adam(net.parameters(), lr=1e-3)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=EPOCHS)
 
     best = float("inf")
     for ep in range(EPOCHS):
         net.train()
-        perm = torch.randperm(len(Xtr))
+        perm = torch.randperm(len(Xtr), device=DEVICE)
         for b in range(0, len(Xtr), BATCH):
             bi = perm[b:b + BATCH]
             opt.zero_grad()

@@ -45,7 +45,7 @@ class RunAction;
 class EventAction : public G4UserEventAction
 {
   public:
-    static constexpr G4int kMaxPixels = 6;
+    static constexpr G4int kMaxPixels = 9;
 
     EventAction(RunAction* runAction);
     ~EventAction() override;

@@ -60,7 +60,7 @@ class DetectorConstruction : public G4VUserDetectorConstruction
 
     // Maximum supported crystals (sizes fixed arrays). The ACTIVE count for the
     // current shape is fNumPixels (4, 5, or 6), available via GetNumPixels().
-    static constexpr G4int kMaxPixels = 6;
+    static constexpr G4int kMaxPixels = 9;
     static G4int GetNumPixels();              // active count for the current shape
 
     // Configuration setters (used by the messenger).
@@ -70,6 +70,7 @@ class DetectorConstruction : public G4VUserDetectorConstruction
     void SetAsymMaterial(G4String m) { fAsymMaterial = m; } // "Al" | "Pb" | "W"
     void SetAsymMode(G4String m) { fAsymMode = m; }         // "arc" (half-shield) | "window" (near-full ring w/ hole)
     void SetZStagger(G4double z) { fZStagger = z; }         // per-crystal z step (breaks planar front/back symmetry)
+    void SetCells(G4String spec) { fCellSpec = spec; fShape = "custom"; }  // "col,row;col,row;..." arbitrary polyomino
     G4String GetShape() const { return fShape; }
     G4double GetPadding() const { return fPadding; }
 
@@ -86,6 +87,7 @@ class DetectorConstruction : public G4VUserDetectorConstruction
     G4String fAsymMaterial = "Al";    // material of the asymmetric shield arc
     G4String fAsymMode = "arc";       // "arc" = open half + shielded half; "window" = near-full ring with a hole
     G4double fZStagger = 0.;          // per-crystal z step (i * fZStagger); 0 = coplanar
+    G4String fCellSpec = "";          // custom polyomino spec "col,row;col,row;..."
 
     static G4int fNumPixels;          // active crystal count for the built shape
 };

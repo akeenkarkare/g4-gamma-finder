@@ -60,7 +60,7 @@ class RunAction : public G4UserRunAction
     // Per-config aggregation: EventAction pushes each event's 4-pixel vector
     // here; EndOfRunAction writes ONE aggregated row (the config readout) so a
     // dataset of N configs is N rows, not N x events rows.
-    static constexpr G4int kMaxPixels = 6;
+    static constexpr G4int kMaxPixels = 9;
     static constexpr G4int kBands = 2;   // per-crystal energy bands: 0=peak, 1=Compton
     void AddPixelVector(const G4double e[kMaxPixels]);
     // Add per-event counts to (pixel, band). Used for multi-band spectral readout.
