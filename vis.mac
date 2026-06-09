@@ -102,14 +102,29 @@
 # Envelope (air): wireframe only so we can see the tiny detector inside it
 /vis/geometry/set/forceWireframe Envelope 0 true
 /vis/geometry/set/colour Envelope 0 0.3 0.3 0.3 0.2
-# CZT pixels: solid yellow (like the paper figures)
+# Crystals: solid yellow (like the paper figures). Cover up to 6 crystals;
+# names not present in the current shape are simply ignored.
 /vis/geometry/set/colour Pixel0 0 1 0.8 0 1
 /vis/geometry/set/colour Pixel1 0 1 0.8 0 1
 /vis/geometry/set/colour Pixel2 0 1 0.8 0 1
 /vis/geometry/set/colour Pixel3 0 1 0.8 0 1
-# Lead padding cross: dark grey
-/vis/geometry/set/colour PadV 0 0.3 0.3 0.3 1
-/vis/geometry/set/colour PadH 0 0.3 0.3 0.3 1
+/vis/geometry/set/colour Pixel4 0 1 0.8 0 1
+/vis/geometry/set/colour Pixel5 0 1 0.8 0 1
+# Lead padding slabs: dark grey (Pad0..Pad6, count varies by shape).
+/vis/geometry/set/colour Pad0 0 0.3 0.3 0.3 1
+/vis/geometry/set/colour Pad1 0 0.3 0.3 0.3 1
+/vis/geometry/set/colour Pad2 0 0.3 0.3 0.3 1
+/vis/geometry/set/colour Pad3 0 0.3 0.3 0.3 1
+/vis/geometry/set/colour Pad4 0 0.3 0.3 0.3 1
+/vis/geometry/set/colour Pad5 0 0.3 0.3 0.3 1
+/vis/geometry/set/colour Pad6 0 0.3 0.3 0.3 1
+# Directional shield arcs (lead petals): blue so they stand out from the casing.
+/vis/geometry/set/colour AsymShield0 0 0.2 0.4 0.9 1
+/vis/geometry/set/colour AsymShield1 0 0.2 0.4 0.9 1
+/vis/geometry/set/colour AsymShield2 0 0.2 0.4 0.9 1
+/vis/geometry/set/colour AsymShield3 0 0.2 0.4 0.9 1
+/vis/geometry/set/colour AsymShield4 0 0.2 0.4 0.9 1
+/vis/geometry/set/colour AsymShield5 0 0.2 0.4 0.9 1
 #
 /vis/viewer/set/style surface
 /vis/viewer/set/hiddenMarker true

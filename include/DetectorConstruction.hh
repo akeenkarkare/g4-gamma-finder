@@ -66,6 +66,8 @@ class DetectorConstruction : public G4VUserDetectorConstruction
     // Configuration setters (used by the messenger).
     void SetShape(G4String shape);
     void SetPadding(G4double pad) { fPadding = pad; }
+    void SetAsymCasing(G4double t) { fAsymCasingThk = t; }  // extra shield thickness on one side; 0 = uniform
+    void SetAsymMaterial(G4String m) { fAsymMaterial = m; } // "Al" | "Pb" | "W"
     G4String GetShape() const { return fShape; }
     G4double GetPadding() const { return fPadding; }
 
@@ -78,6 +80,8 @@ class DetectorConstruction : public G4VUserDetectorConstruction
 
     G4String fShape = "square";       // square|S|J|T|L (4) | P|F (5) | H|U (6)
     G4double fPadding = 1.0;          // lead padding FULL thickness in mm (default 1 mm)
+    G4double fAsymCasingThk = 0.;     // extra shield on the -y half of each casing; 0 = uniform
+    G4String fAsymMaterial = "Al";    // material of the asymmetric shield arc
 
     static G4int fNumPixels;          // active crystal count for the built shape
 };

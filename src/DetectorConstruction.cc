@@ -35,6 +35,7 @@
 #include "G4Material.hh"
 #include "G4NistManager.hh"
 #include "G4PVPlacement.hh"
+#include "G4RotationMatrix.hh"
 #include "G4GenericMessenger.hh"
 #include "G4SystemOfUnits.hh"
 #include "G4Tubs.hh"
@@ -96,6 +97,20 @@ void DetectorConstruction::DefineCommands()
     "Run /run/reinitializeGeometry afterwards.");
   padCmd.SetParameterName("padding", true);
   padCmd.SetDefaultValue("1.0 mm");
+
+  auto& asymCmd = fMessenger->DeclareMethodWithUnit(
+    "asymCasing", "mm", &DetectorConstruction::SetAsymCasing,
+    "Extra aluminium thickness on the -y half of each crystal casing (mm). "
+    "0 = uniform casing. Breaks rotational symmetry to make a single crystal "
+    "directionally sensitive.");
+  asymCmd.SetParameterName("thk", true);
+  asymCmd.SetDefaultValue("0 mm");
+
+  auto& asymMatCmd = fMessenger->DeclareMethod(
+    "asymMaterial", &DetectorConstruction::SetAsymMaterial,
+    "Material of the asymmetric directional shield: Al | Pb | W.");
+  asymMatCmd.SetParameterName("mat", true);
+  asymMatCmd.SetDefaultValue("Al");
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -221,6 +236,27 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
   auto solidCasing = new G4Tubs("Casing",
                                 0., casingRadius, casingHalfZ, 0. * deg, 360. * deg);
 
+  // Optional ASYMMETRIC casing shaping: a thick Al half-arc added on the -y
+  // side of each crystal. This breaks the casing's rotational symmetry so a
+  // single crystal's count rate depends on the source direction (gammas from
+  // +y pass thin Al; from -y they cross the thick arc). Built as a 180-deg
+  // phi-segment ring of extra Al hugging the outside of the casing.
+  G4LogicalVolume* logicAsym = nullptr;
+  if (fAsymCasingThk > 0.) {
+    G4double extra = fAsymCasingThk;  // already in Geant4 length units (mm) from the messenger
+    // phi=0 is +x, 90 +y, 180 -x, 270 -y. Span [180,360] deg = the -y half
+    // (the lower half-plane, centered on -y at 270 deg).
+    auto solidAsym = new G4Tubs("AsymShield",
+                                casingRadius,                 // inner = casing outer
+                                casingRadius + extra,         // outer = + extra Al
+                                casingHalfZ,
+                                180. * deg, 180. * deg);      // start 180, span 180 -> -y half
+    G4Material* asym_mat = casing_mat;  // default Al
+    if (fAsymMaterial == "Pb") asym_mat = lead_mat;
+    else if (fAsymMaterial == "W") asym_mat = nist->FindOrBuildMaterial("G4_W");
+    logicAsym = new G4LogicalVolume(solidAsym, asym_mat, "AsymShield");
+  }
+
   // --- Shape layouts on an integer (col,row) grid ---------------------------
   // Each shape is 4 cells. The array is centered on its centroid before
   // placement. Copy number = pixel index = order in this list.
@@ -230,8 +266,21 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
   // (rows increase upward in y; cols increase to the right in x)
   struct Cell { int col; int row; };
   std::vector<Cell> cells;
+  // --- single crystal (for casing-asymmetry tests) ---
+  if (fShape == "single") {
+    cells = {{0, 0}};
+  // --- 3-crystal arrays (for the 'fewer shaped detectors' study) ---
+  } else if (fShape == "tri") {
+    cells = {{0, 0}, {2, 0}, {1, 1}};   // triangle (compact, asymmetric)
+  } else if (fShape == "L3") {
+    cells = {{0, 1}, {0, 0}, {1, 0}};   // L-tromino
+  } else if (fShape == "tri3") {
+    // Equilateral-ish triangle: 3 crystals ~120 deg apart around the centre, so
+    // their outward-facing (shielded-inward) sectors partition the circle.
+    // Positions on a ring of radius ~1.15 cells: (0,2),(2,-1),(-2,-1)/scaled.
+    cells = {{0, 2}, {2, -1}, {-2, -1}};
   // --- 4-crystal (tetromino) shapes ---
-  if (fShape == "S") {
+  } else if (fShape == "S") {
     cells = {{1, 1}, {2, 1}, {0, 0}, {1, 0}};        // S / Z tetromino
   } else if (fShape == "J") {
     cells = {{0, 1}, {0, 0}, {1, 0}, {2, 0}};        // J tetromino
@@ -315,6 +364,23 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
     fLogicPixel[i] = new G4LogicalVolume(solidPixel, pixel_mat, "Pixel" + std::to_string(i));
     new G4PVPlacement(nullptr, G4ThreeVector(0, 0, 0), fLogicPixel[i],
                       "Pixel" + std::to_string(i), logicCasing, false, i, checkOverlaps);
+
+    // Optional asymmetric directional shield arc. The shield is placed on the
+    // crystal's INWARD side (facing the array centre) so each crystal is OPEN to
+    // its own outward sector. This partitions the circle into distinct sectors
+    // and breaks the front/back degeneracy a plain array suffers.
+    // The shield solid is a half-arc centred on -y (270 deg); we rotate it so
+    // its centre points from the crystal toward the array centroid (origin).
+    if (logicAsym) {
+      G4double inwardAng = std::atan2(-p.y(), -p.x());  // direction crystal->centre
+      // Default arc centre is at 270 deg (-y). Rotate so the arc centre aligns
+      // with the inward direction.
+      G4double rotZ = inwardAng - (-90. * deg);  // -90 deg = -y in atan2 convention
+      auto rot = new G4RotationMatrix();
+      rot->rotateZ(-rotZ);
+      new G4PVPlacement(rot, p, logicAsym,
+                        "AsymShield" + std::to_string(i), logicEnv, false, i, checkOverlaps);
+    }
   }
 
   // --- Lead padding in the gaps between adjacent cells -----------------------
