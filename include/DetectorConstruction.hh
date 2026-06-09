@@ -71,6 +71,11 @@ class DetectorConstruction : public G4VUserDetectorConstruction
     void SetAsymMode(G4String m) { fAsymMode = m; }         // "arc" (half-shield) | "window" (near-full ring w/ hole)
     void SetZStagger(G4double z) { fZStagger = z; }         // per-crystal z step (breaks planar front/back symmetry)
     void SetCells(G4String spec) { fCellSpec = spec; fShape = "custom"; }  // "col,row;col,row;..." arbitrary polyomino
+    // Paper-matching knobs:
+    void SetCrystalSize(G4double s);                        // crystal full size (messenger passes Geant4 units)
+    void SetCrystalMat(G4String m)  { fCrystalMat = m; }    // "LaBr3" | "CZT"
+    void SetCasingThk(G4double t);                          // Al casing thickness (0 = no casing)
+    void SetPixelShape(G4String s)  { fPixelShape = s; }    // "cyl" | "box"
     G4String GetShape() const { return fShape; }
     G4double GetPadding() const { return fPadding; }
 
@@ -88,6 +93,10 @@ class DetectorConstruction : public G4VUserDetectorConstruction
     G4String fAsymMode = "arc";       // "arc" = open half + shielded half; "window" = near-full ring with a hole
     G4double fZStagger = 0.;          // per-crystal z step (i * fZStagger); 0 = coplanar
     G4String fCellSpec = "";          // custom polyomino spec "col,row;col,row;..."
+    G4double fCrystalSize = 50.8;     // crystal full size in mm (default 2 inch = 50.8 mm)
+    G4String fCrystalMat = "LaBr3";   // "LaBr3" | "CZT"
+    G4double fCasingThk = 2.0;         // Al casing thickness in mm (default 2 mm; 0 = none)
+    G4String fPixelShape = "cyl";      // "cyl" (cylinder) | "box" (cube)
 
     static G4int fNumPixels;          // active crystal count for the built shape
 };

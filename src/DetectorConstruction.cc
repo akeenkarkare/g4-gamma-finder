@@ -39,6 +39,7 @@
 #include "G4GenericMessenger.hh"
 #include "G4SystemOfUnits.hh"
 #include "G4Tubs.hh"
+#include "G4VSolid.hh"
 
 #include <cctype>
 #include <cmath>
@@ -78,6 +79,13 @@ void DetectorConstruction::SetShape(G4String shape)
   // the tetrominoes; "square" must be spelled out).
   fShape = shape;
 }
+
+//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
+
+// The messenger passes lengths in Geant4 internal units (mm); we store mm-numbers
+// and re-apply *mm in the geometry, so divide out here.
+void DetectorConstruction::SetCrystalSize(G4double s) { fCrystalSize = s / mm; }
+void DetectorConstruction::SetCasingThk(G4double t)   { fCasingThk = t / mm; }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
@@ -135,6 +143,31 @@ void DetectorConstruction::DefineCommands()
     "recompiling. Up to kMaxPixels crystals.");
   cellsCmd.SetParameterName("spec", true);
   cellsCmd.SetDefaultValue("");
+
+  // --- Paper-matching knobs ---
+  auto& csizeCmd = fMessenger->DeclareMethodWithUnit(
+    "crystalSize", "mm", &DetectorConstruction::SetCrystalSize,
+    "Crystal full size (cube edge / cylinder diameter & height).");
+  csizeCmd.SetParameterName("size", true);
+  csizeCmd.SetDefaultValue("50.8 mm");
+
+  auto& cmatCmd = fMessenger->DeclareMethod(
+    "crystalMat", &DetectorConstruction::SetCrystalMat,
+    "Crystal material: LaBr3 | CZT.");
+  cmatCmd.SetParameterName("mat", true);
+  cmatCmd.SetDefaultValue("LaBr3");
+
+  auto& cthkCmd = fMessenger->DeclareMethodWithUnit(
+    "casingThk", "mm", &DetectorConstruction::SetCasingThk,
+    "Aluminium casing thickness (0 = no casing, crystal sits directly in air).");
+  cthkCmd.SetParameterName("thk", true);
+  cthkCmd.SetDefaultValue("2 mm");
+
+  auto& pshCmd = fMessenger->DeclareMethod(
+    "pixelShape", &DetectorConstruction::SetPixelShape,
+    "Crystal solid shape: cyl (cylinder) | box (cube, matches the paper).");
+  pshCmd.SetParameterName("shape", true);
+  pshCmd.SetDefaultValue("cyl");
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -233,7 +266,14 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
   wnife->AddElement(nist->FindOrBuildElement("Ni"), 0.06);
   wnife->AddElement(nist->FindOrBuildElement("Fe"), 0.04);
 
-  G4Material* pixel_mat  = labr3;
+  // CZT (Cd0.9 Zn0.1 Te) -- the paper's simulation crystal, for matched-config
+  // validation against Okabe et al.
+  auto czt = new G4Material("CZT", 5.78 * g / cm3, 3);
+  czt->AddElement(nist->FindOrBuildElement("Cd"), 9);
+  czt->AddElement(nist->FindOrBuildElement("Zn"), 1);
+  czt->AddElement(nist->FindOrBuildElement("Te"), 10);
+
+  G4Material* pixel_mat  = (fCrystalMat == "CZT") ? czt : labr3;
   G4Material* lead_mat   = nist->FindOrBuildMaterial("G4_Pb");
   G4Material* casing_mat = nist->FindOrBuildMaterial("G4_Al");
 
@@ -248,26 +288,33 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
   // Each crystal is fully enclosed in a 2 mm-thick aluminium casing (a sealed
   // can wrapping the side wall and both end faces) -- realistic, since LaBr3
   // is hygroscopic and always hermetically sealed in an Al housing.
-  G4double pixelRadius = 1.0 * 2.54 * cm;  // 2.54 cm radius = 2 inch diameter
-  G4double pixelHalfZ  = 1.0 * 2.54 * cm;  // 2.54 cm half = 2 inch height
-  G4double casingThk   = 0.2 * cm;         // 2 mm aluminium casing
-  G4double padHalf     = 0.5 * fPadding * mm;  // lead padding half-thickness (fPadding in mm)
+  // Crystal half-extent from the configurable full size (default 2 inch).
+  G4double pixelRadius = 0.5 * fCrystalSize * mm;  // cylinder radius OR box half-edge
+  G4double pixelHalfZ  = 0.5 * fCrystalSize * mm;
+  G4double casingThk   = fCasingThk * mm;          // Al casing (0 = none)
+  G4double padHalf     = 0.5 * fPadding * mm;       // lead padding half-thickness
+  G4bool   hasCasing   = casingThk > 0.;
 
-  // Outer casing cylinder: crystal radius/height + 2 mm on every side.
+  // Outer envelope of one detector unit (casing if present, else the crystal).
   G4double casingRadius = pixelRadius + casingThk;
   G4double casingHalfZ  = pixelHalfZ + casingThk;
+  G4double unitHalf     = hasCasing ? casingRadius : pixelRadius;
 
-  // Grid cell pitch: casings in adjacent cells leave a `fPadding`-mm gap.
-  // pitch = casing diameter + padding gap.
-  G4double pitch = 2.0 * casingRadius + 2.0 * padHalf;
+  // Grid cell pitch: adjacent units leave a `fPadding`-mm gap.
+  G4double pitch = 2.0 * unitHalf + 2.0 * padHalf;
 
-  // The crystal solid (scored), placed INSIDE its casing.
-  auto solidPixel = new G4Tubs("Pixel",
-                               0., pixelRadius, pixelHalfZ, 0. * deg, 360. * deg);
-
-  // The casing solid (a solid Al cylinder; the crystal sits inside it).
-  auto solidCasing = new G4Tubs("Casing",
-                                0., casingRadius, casingHalfZ, 0. * deg, 360. * deg);
+  // Crystal solid: cylinder ("cyl") or cube ("box", matching the paper).
+  G4VSolid* solidPixel;
+  G4VSolid* solidCasing = nullptr;
+  if (fPixelShape == "box") {
+    solidPixel = new G4Box("Pixel", pixelRadius, pixelRadius, pixelHalfZ);
+    if (hasCasing)
+      solidCasing = new G4Box("Casing", casingRadius, casingRadius, casingHalfZ);
+  } else {
+    solidPixel = new G4Tubs("Pixel", 0., pixelRadius, pixelHalfZ, 0. * deg, 360. * deg);
+    if (hasCasing)
+      solidCasing = new G4Tubs("Casing", 0., casingRadius, casingHalfZ, 0. * deg, 360. * deg);
+  }
 
   // Optional ASYMMETRIC casing shaping: a thick Al half-arc added on the -y
   // side of each crystal. This breaks the casing's rotational symmetry so a
@@ -463,14 +510,20 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
     p.setZ(i * fZStagger - zMid);
     pos.push_back(p);
 
-    auto logicCasing =
-      new G4LogicalVolume(solidCasing, casing_mat, "Casing" + std::to_string(i));
-    new G4PVPlacement(nullptr, p, logicCasing,
-                      "Casing" + std::to_string(i), logicEnv, false, i, checkOverlaps);
-
     fLogicPixel[i] = new G4LogicalVolume(solidPixel, pixel_mat, "Pixel" + std::to_string(i));
-    new G4PVPlacement(nullptr, G4ThreeVector(0, 0, 0), fLogicPixel[i],
-                      "Pixel" + std::to_string(i), logicCasing, false, i, checkOverlaps);
+    if (hasCasing) {
+      // Crystal nested inside its Al casing; casing placed in the envelope.
+      auto logicCasing =
+        new G4LogicalVolume(solidCasing, casing_mat, "Casing" + std::to_string(i));
+      new G4PVPlacement(nullptr, p, logicCasing,
+                        "Casing" + std::to_string(i), logicEnv, false, i, checkOverlaps);
+      new G4PVPlacement(nullptr, G4ThreeVector(0, 0, 0), fLogicPixel[i],
+                        "Pixel" + std::to_string(i), logicCasing, false, i, checkOverlaps);
+    } else {
+      // No casing: crystal placed directly in the envelope (paper-matched).
+      new G4PVPlacement(nullptr, p, fLogicPixel[i],
+                        "Pixel" + std::to_string(i), logicEnv, false, i, checkOverlaps);
+    }
 
     // Place the directional shield so its SENSITIVE direction (open half / hole,
     // built at +y) points OUTWARD -- away from the array centre. Each crystal is
