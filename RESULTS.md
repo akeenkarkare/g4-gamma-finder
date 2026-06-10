@@ -1,5 +1,32 @@
 # Results
 
+## Executive summary (current best understanding)
+
+This is a living research log; later sections SUPERSEDE earlier ones where they
+conflict. The current conclusions, in order of confidence:
+
+1. **Shape matters far more than crystal count.** Within a fixed crystal count,
+   directional error spans ~10x between the best and worst arrangement (e.g.
+   pentominoes: 4.4 deg for P vs 57 deg for the straight line I).
+2. **The real design lever is crystal DENSITY within a fixed footprint**, not the
+   raw number of crystals. A compact 6-crystal array (h13, 2.58 deg) beats the
+   best 5-crystal (pP, 4.36 deg); a taller 6-array (h27, 3.43 deg) barely does.
+   A larger footprint blurs the angular signal. (This revises the earlier
+   "knee at 5" reading, which had let footprint grow with count.)
+3. **Model choice changes which shape wins.** A simple MLP mis-ranks compact
+   shapes; the faithful MC-initialized U-Net (the paper's model) is the
+   trustworthy ranker. Pentomino ranking is robust (pP wins under both);
+   hexomino ranking is NOT (h13 leapfrogged under the U-Net).
+4. **Validated against the paper.** Matched geometry + the U-Net land within ~2x
+   of Okabe et al.; same shape ordering (S best of the tetrominoes).
+5. **Real hardware is competitive.** 2-inch LaBr3 cylinders + 2 mm Al casings
+   perform comparably to the paper's idealized CZT.
+
+**Open items (queued for the RTX laptop, see WINDOWS_SWEEP.md):**
+(a) re-rank all 35 hexominoes under the U-Net for a true best-6;
+(b) footprint-controlled N=7 (compact heptominoes) -- does it beat h13's 2.58 deg?
+
+
 Recreation of Okabe et al., *Tetris-inspired detector with neural network for
 radiation mapping*, Nat. Commun. 15:3061 (2024), using our own hardware model:
 **2-inch cylindrical LaBr3 crystals in 2 mm aluminium casings**, 4-crystal array,

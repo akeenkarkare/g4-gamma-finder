@@ -1,41 +1,52 @@
-# Running the 7-crystal (heptomino) sweep on the RTX 4070 Windows laptop
+# GPU sweeps on the RTX 4070 Windows laptop
 
-The 108 heptominoes are too many to run on the Mac, so generate them here on the
-GPU machine. Geometry uses the runtime `/det/cells` command (no recompile needed
-per shape), and `train_compare.py` auto-uses CUDA if available.
+Two heavy sweeps belong on the GPU machine. Both use the **MC-initialized U-Net**
+(`train_unet.py`, auto-CUDA) -- the validated model -- not the old MLP. The driver
+`sweep_unet.py` does everything per shape: generate dataset -> generate MC filters
+-> train U-Net -> rank.
+
+## Why these two
+1. **Full 35-hexomino re-rank under the U-Net.** The MLP mis-ranks compact shapes
+   (it rated h13 mid-pack; the U-Net found h13 = best of everything). So the
+   MLP-based "best-6" is unreliable and must be redone with the U-Net.
+2. **Footprint-controlled N=7.** A sprawling heptomino re-introduces the footprint
+   confound (bigger array blurs angle). We restrict to heptominoes fitting a 3x3
+   box (`--maxspan 2`, 7 shapes) so N=7 is comparable to pP(5) and h13(6).
 
 ## Prereqs
-1. Pull the repo.
-2. Build the Geant4 app (Windows): produces `build\exampleB1.exe`.
-   (Standard Geant4 + CMake build; same CMakeLists as macOS.)
-3. Python env with PyTorch (CUDA build) + numpy:
-   `pip install torch numpy`  (use the CUDA wheel from pytorch.org)
-4. Make sure `gen_config_step.mac` is in the `build` dir
-   (`copy gen_config_step.mac build\`).
+1. Pull the repo; build the Geant4 app -> `build\exampleB1.exe`.
+2. `pip install torch numpy` (CUDA wheel from pytorch.org). Verify GPU:
+   `python -c "import torch; print(torch.cuda.is_available())"` -> True.
+3. `copy gen_config_step.mac build\`  (the sweep needs it in the build dir).
+4. Quick smoke test (tiny, ~2 min): confirms the chain runs before the big jobs:
+   `set SEEDS=1 & set EPOCHS=10 & python sweep_unet.py --exe build\exampleB1.exe --mode heptominoes --configs 50 --events 1000`
 
-## Step 1 - generate all 108 heptomino datasets (Geant4, CPU-bound)
+## Sweep A -- all 35 hexominoes (true best-6)
 ```
-python heptomino_sweep.py --exe build\exampleB1.exe --configs 1000 --events 5000
+python sweep_unet.py --exe build\exampleB1.exe --mode hexominoes --configs 1000 --events 5000
 ```
-This writes `build\dsHep_hep000_nt_pixels.csv` ... `hep107`. It prints each shape's
-cell spec as it goes. ~108 x ~30 s ≈ under an hour on a fast CPU.
-(Tip: test first with `--limit 3`.)
+Prints a ranking; top line = best 6-crystal shape under the U-Net.
+(Compare to the lucky data point we already have: h13 = 2.58 deg.)
 
-## Step 2 - train + rank all 108 (PyTorch, GPU)
+## Sweep B -- footprint-controlled N=7 (the 7 compact heptominoes)
 ```
-python train_compare.py build\dsHep_*_nt_pixels.csv
+python sweep_unet.py --exe build\exampleB1.exe --mode heptominoes --maxspan 2 --configs 1000 --events 5000
 ```
-With CUDA this is much faster than the Mac. The ranking's top line is the best
-7-crystal shape; note its `hepNNN` tag and look up its cells in the step-1 output.
+7 shapes, each fitting a 3x3 footprint. Top line = best compact 7-crystal shape.
 
-## Step 3 - send back the result
-Report the best-7 mean +/- std (deg) and which hepNNN it was, so it can be added
-to the crystal-count knee curve alongside best-4 (S, ~7-9), best-5 (P-pentomino,
-~4.7), best-6 (from the Mac hexomino sweep).
+## Tuning cost (env vars)
+- `SEEDS` (default 3), `EPOCHS` (default 200) for train_unet.
+- `CPU=1` forces CPU if needed.
+- 5 seeds / 300 epochs for publication-grade precision.
 
-## Force CPU (if no GPU): set env CPU=1 before train_compare.py.
-## Knee context so far (idealized, mono 0.5 MeV, 1000 configs):
-##   best-4 S         ~9.0 deg
-##   best-5 P-pentomino ~4.7 deg   <- current optimum
-##   best-6           (Mac sweep, pending)
-##   best-7           (this sweep)
+## Send back
+For each sweep: the best shape's tag + its cells (printed in the run) and the
+mean +/- std (deg), so we can complete the curve:
+```
+  best-4  S            5.05 deg  (U-Net)
+  best-5  pP           4.36 deg  (U-Net, exhaustive over 12 pentominoes)
+  best-6  ???          (Sweep A)   -- h13 = 2.58 is the current lower bound
+  best-7  ??? compact  (Sweep B)
+```
+Key question: does best-7 (compact) drop below h13's 2.58 deg? If yes, the
+"density within a fixed footprint" trend extends to N=7 -- the headline result.
