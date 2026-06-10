@@ -155,3 +155,56 @@ python3 train_compare.py build/dsRealS_nt_pixels.csv
 # 4. Background-discrimination demo (run the two macros first to make spectra)
 python3 analyze_discrimination.py build/mix_src build/mix_int
 ```
+
+## Model rigor: MC-initialized U-Net validation
+
+The rankings above were first found with a simple MLP. To check they are not
+model artifacts, we re-trained with a faithful re-implementation of the paper's
+model (MC-initialized filter layer + cyclic 1D U-Net + cyclic-Wasserstein loss;
+see train_unet.py, gen_filters.py). The U-Net improves every absolute number
+(closer to the paper's scale) -- e.g. best-4 S: 9.0 -> 5.05 deg.
+
+### Pentomino re-rank under the U-Net (all 12, 3 seeds)
+| Rank | Pentomino | U-Net error (deg) |
+|------|-----------|-------------------|
+| 1 | **pP** | **4.36 ± 0.44** |
+| 2 | pX | 5.31 ± 1.85 |
+| 3 | pT | 5.88 ± 0.93 |
+| ... | ... | ... |
+| 11 | pL | 26.71 |
+| 12 | pI (straight line) | 57.51 |
+
+**pP remains best-5 under the U-Net** -- the pentomino ranking is ROBUST to model
+choice (MLP and U-Net agree). pP vs runner-up pX is ~1 deg with overlapping
+bands, so "pP best" is clear on the means but not a knockout.
+
+### Hexomino ranking is NOT robust -- important caveat
+The MLP ranked h27 as best-6 (5.30 deg) and h13 as mid-pack (9.51 deg). But under
+the U-Net, **h13 = 2.58 deg -- the best of ANY config tested**, while h27 = 3.43.
+So the MLP badly mis-ranked the compact hexomino h13. Lesson: the simple MLP is
+unreliable for ranking compact shapes; the full 35-hexomino ranking must be
+redone under the U-Net (not yet done).
+
+### Footprint vs crystal count (mechanism of the "knee")
+h13 is a 2x3 rectangle with the SAME bounding-box footprint as the 5-crystal pP,
+but one extra crystal. Under the U-Net:
+| Config | Crystals | Footprint | U-Net error (deg) |
+|--------|----------|-----------|-------------------|
+| pP | 5 | 2x3 | 4.36 |
+| h27 | 6 | 2x4 (taller) | 3.43 |
+| **h13** | 6 | 2x3 (= pP) | **2.58** |
+
+A compact 6-array (h13) clearly beats the 5-array (pP); a taller 6-array (h27)
+barely does. So the limiting variable is **crystal DENSITY within a fixed
+footprint**, not raw crystal count -- a larger footprint blurs the angular
+signal (subtends a wider range of incident angles). This REVISES the earlier
+"knee at 5": with footprint held fixed, more crystals keep helping.
+
+Open items: (1) re-rank all 35 hexominoes under the U-Net; (2) run N=7
+FOOTPRINT-CONTROLLED (compact heptomino) on the RTX laptop -- a sprawling
+heptomino would re-introduce the footprint confound.
+
+## Engineering / housekeeping
+- /det/histograms is OFF by default; bulk dataset and filter runs no longer
+  write per-crystal spectrum CSVs. Enable with /det/histograms true for
+  spectrum-inspection runs.

@@ -66,6 +66,12 @@ class RunAction : public G4UserRunAction
     // Add per-event counts to (pixel, band). Used for multi-band spectral readout.
     void AddBandCount(G4int pixel, G4int band);
 
+    // Per-crystal energy spectra (H1 histograms). OFF by default: bulk dataset
+    // and filter runs don't need them and they spam one CSV per crystal. Turn
+    // on with /det/histograms true for spectrum-inspection runs.
+    static G4bool HistogramsEnabled() { return fHistEnabled; }
+    void SetHistograms(G4bool on) { fHistEnabled = on; }
+
     // Dataset-file control (driven by /det/ UI commands). Open the ntuple
     // file once, run many beamOn's (configs), then write once.
     void OpenDataFile(G4String name);
@@ -83,6 +89,8 @@ class RunAction : public G4UserRunAction
 
     G4double fPixelSum[kMaxPixels] = {0.};            // per-run pixel energy totals
     G4double fBandSum[kMaxPixels][kBands] = {{0.}};   // per-run per-band counts
+
+    static G4bool fHistEnabled;   // write per-crystal spectra? (default false)
 };
 
 }  // namespace B1

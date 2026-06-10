@@ -89,10 +89,12 @@ void EventAction::EndOfEventAction(const G4Event*)
   auto analysisManager = G4AnalysisManager::Instance();
   const G4int n = DetectorConstruction::GetNumPixels();
 
-  // Fill the FULL per-crystal energy spectrum (no ROI cut) so the histograms
-  // always show the complete spectrum for inspection.
-  for (G4int i = 0; i < n; ++i) {
-    if (fEdep[i] > 0.) analysisManager->FillH1(i, fEdep[i] / keV);
+  // Fill the FULL per-crystal energy spectrum (no ROI cut), only if histograms
+  // are enabled (off by default for bulk runs -- see RunAction::HistogramsEnabled).
+  if (RunAction::HistogramsEnabled()) {
+    for (G4int i = 0; i < n; ++i) {
+      if (fEdep[i] > 0.) analysisManager->FillH1(i, fEdep[i] / keV);
+    }
   }
 
   // Build the aggregated readout vector. If an ROI is set, a pixel only

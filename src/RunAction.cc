@@ -47,6 +47,9 @@
 namespace B1
 {
 
+// Per-crystal spectra off by default (bulk runs don't need them).
+G4bool RunAction::fHistEnabled = false;
+
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 RunAction::RunAction()
@@ -95,15 +98,8 @@ RunAction::RunAction()
   analysisManager->CreateNtupleIColumn("nEvents");
   analysisManager->FinishNtuple();
 
-  // --- Per-crystal energy spectra (histograms) ---
-  // One H1 per crystal (up to kMaxPixels): counts vs deposited energy. Range
-  // 0-1600 keV captures the low-energy source photopeaks AND the high-energy
-  // 138La intrinsic lines (789, 1436 keV). Unused crystals stay empty.
-  for (G4int i = 0; i < kMaxPixels; ++i) {
-    analysisManager->CreateH1("spectrum" + std::to_string(i),
-                              "Energy spectrum pixel " + std::to_string(i) + " (keV)",
-                              1600, 0., 1600.);
-  }
+  // Note: per-crystal spectra (H1) are created lazily in BeginOfRunAction (if
+  // /det/histograms is on) -- the flag isn't known yet at construction time.
 
   DefineCommands();
 }
@@ -132,6 +128,13 @@ void RunAction::DefineCommands()
   fMessenger->DeclareMethod(
     "writeFile", &RunAction::WriteDataFile,
     "Write and close the dataset file. Call once at the end of a scan.");
+
+  auto& histCmd = fMessenger->DeclareMethod(
+    "histograms", &RunAction::SetHistograms,
+    "Write per-crystal energy spectra (H1 -> one CSV per crystal). Off by "
+    "default; enable for spectrum-inspection runs. Set before /run/initialize.");
+  histCmd.SetParameterName("on", true);
+  histCmd.SetDefaultValue("false");
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -176,6 +179,19 @@ void RunAction::BeginOfRunAction(const G4Run*)
 {
   // inform the runManager to save random number seed
   G4RunManager::GetRunManager()->SetRandomNumberStore(false);
+
+  // Create per-crystal spectra lazily (once), now that /det/histograms has been
+  // processed. Must happen before OpenFile below.
+  static G4bool histCreated = false;
+  if (fHistEnabled && !histCreated) {
+    auto am = G4AnalysisManager::Instance();
+    for (G4int i = 0; i < kMaxPixels; ++i) {
+      am->CreateH1("spectrum" + std::to_string(i),
+                   "Energy spectrum pixel " + std::to_string(i) + " (keV)",
+                   1600, 0., 1600.);
+    }
+    histCreated = true;
+  }
 
   // reset accumulables to their initial values
   G4AccumulableManager* accumulableManager = G4AccumulableManager::Instance();
