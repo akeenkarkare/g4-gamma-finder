@@ -117,10 +117,12 @@ def _gen_filters_custom(builddir, exe, cells_cmd, out, seg, far, near, events):
     np.save(out, filt[:, :, active])
 
 
-def compact_heptominoes(maxspan):
-    """Heptominoes whose bounding box fits within (maxspan+1) x (maxspan+1) cells."""
+def compact_polyominoes(n, maxspan):
+    """Free n-cell polyominoes whose bounding box fits within (maxspan+1) cells
+    per side. With maxspan=2 (3x3 box) and 2-inch crystals there is no overlap;
+    n=9 is the fully-tiled 3x3 (the densest packing at this footprint)."""
     out = []
-    for cells in free_polyominoes(7):
+    for cells in free_polyominoes(n):
         cols = [c for c, r in cells]; rows = [r for c, r in cells]
         if (max(cols) - min(cols)) <= maxspan and (max(rows) - min(rows)) <= maxspan:
             out.append(cells)
@@ -131,11 +133,16 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--exe", default="build/exampleB1")
     ap.add_argument("--builddir", default="build")
-    ap.add_argument("--mode", choices=["hexominoes", "heptominoes", "named"], default="named")
+    ap.add_argument("--mode", choices=["hexominoes", "compact", "named"], default="named",
+                    help="hexominoes: all 35 (named h01..h35). "
+                         "compact: footprint-controlled free n-ominoes via --n. "
+                         "named: explicit --shapes.")
+    ap.add_argument("--n", type=int, default=7,
+                    help="crystal count for mode=compact (7,8,9). n=9 fully tiles a 3x3.")
     ap.add_argument("--shapes", default="", help="space-separated named shapes (mode=named)")
     ap.add_argument("--maxspan", type=int, default=2,
-                    help="heptomino bbox span limit in cells (2 => 3x3 box, the "
-                         "footprint-controlled set ~comparable to pP/h13; 7 shapes)")
+                    help="bbox span limit in cells for mode=compact (2 => 3x3 box, the "
+                         "footprint-controlled set comparable to pP(5)/h13(6)).")
     ap.add_argument("--configs", type=int, default=1000)
     ap.add_argument("--events", type=int, default=5000)
     args = ap.parse_args()
@@ -144,12 +151,13 @@ def main():
     jobs = []
     if args.mode == "hexominoes":
         jobs = [(f"h{n:02d}", f"/det/shape h{n:02d}") for n in range(1, 36)]
-    elif args.mode == "heptominoes":
-        heps = compact_heptominoes(args.maxspan)
-        print(f"{len(heps)} compact heptominoes (bbox <= {args.maxspan+1} cells/side)")
-        for i, cells in enumerate(heps):
+    elif args.mode == "compact":
+        shapes = compact_polyominoes(args.n, args.maxspan)
+        print(f"{len(shapes)} compact {args.n}-ominoes "
+              f"(bbox <= {args.maxspan+1} cells/side)")
+        for i, cells in enumerate(shapes):
             spec = ";".join(f"{c},{r}" for c, r in cells)
-            jobs.append((f"hep{i:03d}", f"/det/cells {spec}"))
+            jobs.append((f"n{args.n}_{i:03d}", f"/det/cells {spec}"))
     else:
         jobs = [(s, f"/det/shape {s}") for s in args.shapes.split()]
 

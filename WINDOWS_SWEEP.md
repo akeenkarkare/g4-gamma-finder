@@ -28,11 +28,22 @@ python sweep_unet.py --exe build\exampleB1.exe --mode hexominoes --configs 1000 
 Prints a ranking; top line = best 6-crystal shape under the U-Net.
 (Compare to the lucky data point we already have: h13 = 2.58 deg.)
 
-## Sweep B -- footprint-controlled N=7 (the 7 compact heptominoes)
+## Sweep B -- footprint-controlled knee curve, N=7,8,9 (3x3 box)
+Run each N; all shapes fit the same 3x3 footprint (no overlap; n=9 is the fully
+tiled 3x3 square). Compact shape counts: N=7 -> 7, N=8 -> 3, N=9 -> 1.
 ```
-python sweep_unet.py --exe build\exampleB1.exe --mode heptominoes --maxspan 2 --configs 1000 --events 5000
+python sweep_unet.py --exe build\exampleB1.exe --mode compact --n 7 --configs 1000 --events 5000
+python sweep_unet.py --exe build\exampleB1.exe --mode compact --n 8 --configs 1000 --events 5000
+python sweep_unet.py --exe build\exampleB1.exe --mode compact --n 9 --configs 1000 --events 5000
 ```
-7 shapes, each fitting a 3x3 footprint. Top line = best compact 7-crystal shape.
+Top line of each = best shape at that N. This builds the footprint-controlled
+curve N=5,6,7,8,9 to locate the knee.
+
+NOTE on a built-in tension: as N rises toward 9, the shapes are FORCED to fill
+the box, becoming more symmetric -- and symmetry hurt directional resolution in
+the tetromino study. So the curve might keep improving (knee ~8-9) OR turn over
+earlier (knee ~6-7) as forced symmetry outweighs the extra crystal. The N=9
+shape is the maximally-symmetric square, the worst-case for symmetry.
 
 ## Tuning cost (env vars)
 - `SEEDS` (default 3), `EPOCHS` (default 200) for train_unet.
@@ -46,7 +57,10 @@ mean +/- std (deg), so we can complete the curve:
   best-4  S            5.05 deg  (U-Net)
   best-5  pP           4.36 deg  (U-Net, exhaustive over 12 pentominoes)
   best-6  ???          (Sweep A)   -- h13 = 2.58 is the current lower bound
-  best-7  ??? compact  (Sweep B)
+  best-7  ??? compact  (Sweep B, --n 7)
+  best-8  ??? compact  (Sweep B, --n 8)
+  best-9  square 3x3   (Sweep B, --n 9; only one compact shape)
 ```
-Key question: does best-7 (compact) drop below h13's 2.58 deg? If yes, the
-"density within a fixed footprint" trend extends to N=7 -- the headline result.
+Key question: where does the footprint-controlled curve flatten? If it keeps
+improving to 8-9, the knee is high (density-limited). If it turns over at 6-7,
+forced symmetry at high N is the limiter. Either is a real, reportable result.
