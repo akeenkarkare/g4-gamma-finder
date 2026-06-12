@@ -16,5 +16,10 @@ runs/
 !datasets_keep/
 !datasets_keep/*.csv
 
+# Sweep scratch (results get curated into RESULTS.md)
+view/
+sweep_*.log
+gpu_temp.log
+
 # OS cruft
 .DS_Store
